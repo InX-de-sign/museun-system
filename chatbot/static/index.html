@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Muznc</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 800px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background-color: white;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            padding: 20px;
+            margin: 0;
+            background-color: #2c3e50;
+            color: white;
+        }
+
+        .messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .message {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            line-height: 1.4;
+        }
+
+        .user-message {
+            align-self: flex-end;
+            background-color: #e3f2fd;
+            color: #1565c0;
+            border-bottom-right-radius: 4px;
+            border-right: 4px solid #2196f3;
+        }
+
+        .bot-message {
+            align-self: flex-start;
+            background-color: #f3e5f5;
+            color: #7b1fa2;
+            border-bottom-left-radius: 4px;
+            border-left: 4px solid #9c27b0;
+        }
+
+        .welcome-message {
+            align-self: flex-start;
+            background-color: #e8f5e8;
+            color: #2e7d32;
+            border-bottom-left-radius: 4px;
+            border-left: 4px solid #4caf50;
+            font-weight: 500;
+        }
+
+        .system-message {
+            align-self: center;
+            background-color: #95a5a6a6;
+            color: white;
+            font-size: 0.9em;
+            padding: 8px 12px;
+        }
+
+        .input-area {
+            display: flex;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-top: 1px solid #ddd;
+            gap: 10px;
+            align-items: center;
+        }
+
+        #textInput {
+            flex: 1;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 24px;
+            outline: none;
+            font-size: 16px;
+        }
+
+        #textInput:focus {
+            border-color: #3498db;
+        }
+
+        button {
+            padding: 12px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 24px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        #recordButton {
+            padding: 12px;
+            background-color: #e74c3c;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #recordButton:hover {
+            background-color: #c0392b;
+        }
+
+        #recordButton.recording {
+            animation: pulse 1.5s infinite;
+            background-color: #c0392b;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.1);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        .audio-control {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            background: white;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .audio-enabled {
+            background-color: #27ae60;
+        }
+
+        .test-panel {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .test-btn {
+            padding: 8px 12px;
+            margin: 2px;
+            font-size: 12px;
+        }
+
+        .debug-info {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px;
+            font-size: 10px;
+            border-radius: 5px;
+            max-width: 200px;
+            word-break: break-all;
+        }
+
+        .audio-debug {
+            font-size: 11px;
+            color: #666;
+            margin-top: 5px;
+            font-style: italic;
+        }
+
+        .streaming-indicator {
+            color: #27ae60;
+            font-style: italic;
+            font-size: 0.9em;
+        }
+
+        .sentence-chunk {
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="chat-container">
+        <h1>Muznc</h1>
+        <div class="messages" id="messages">
+            <div class="system-message">Connecting to museum assistant...</div>
+        </div>
+        <div class="input-area">
+            <input type="text" id="textInput" placeholder="Type your message..." autocomplete="off">
+            <button id="sendButton" onclick="sendMessage()">Send</button>
+            <button id="recordButton" onclick="toggleRecording()" title="Voice Input">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Audio Control Panel -->
+    <div class="audio-control">
+        <button id="audioToggle" onclick="toggleAudio()">Enable Audio 🔊</button>
+        <span id="audioStatus">Audio: OFF</span>
+    </div>
+
+    <!-- Test Panel -->
+    <div class="test-panel">
+        <div><strong>Quick Tests:</strong></div>
+        <button class="test-btn" onclick="testMessage('Tell me about Van Gogh')">Van Gogh</button>
+        <button class="test-btn" onclick="testMessage('Tell me about Traquair')">Traquair</button>
+        <button class="test-btn" onclick="testMessage('Where is the Lady Jane Grey painting?')">Lady Jane</button>
+        <button class="test-btn" onclick="testMessage('What are the museum hours?')">Hours</button>
+        <button class="test-btn" onclick="testMessage('What activities do you have for kids?')">Kids</button>
+        <button class="test-btn" onclick="testMessage('What am I looking at right now?')">CV Test</button>
+    </div>
+
+    <!-- Debug Info Panel -->
+    <div class="debug-info" id="debugInfo" style="display: none;">
+        Audio Debug Info
+    </div>
+
+    <script>
+        // Global variable declarations
+        let ws = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+        let messageQueue = [];
+        let audioEnabled = false;
+        let isRecording = false;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let currentStream = null;
+        let audioContext = null;
+        let hasUserInteracted = false;
+        let audioQueue = [];
+        let isPlayingAudio = false;
+        let currentAudioElement = null;
+
+        // TTS Voice Management
+        let selectedVoice = null;
+        let voicesLoaded = false;
+        //TTS Queue Management
+        let ttsQueue = [];
+        let isTTSPlaying = false;
+        let currentResponseId = null;
+
+        // Initialize consistent TTS voice
+        function initializeTTSVoice() {
+            if (!('speechSynthesis' in window)) {
+                console.warn('Speech synthesis not supported');
+                return;
+            }
+
+            function loadVoices() {
+                const voices = speechSynthesis.getVoices();
+                console.log('Available voices:', voices.map(v => `${v.name} (${v.lang})`));
+
+                if (voices.length === 0) {
+                    console.warn('No voices available yet');
+                    return;
+                }
+
+                // Priority order for voice selection (female voices first)
+                const voicePreferences = [
+                    // English female voices (preferred)
+                    v => v.lang.startsWith('en') && v.name.toLowerCase().includes('female'),
+                    v => v.lang.startsWith('en') && (v.name.toLowerCase().includes('samantha') || v.name.toLowerCase().includes('karen')),
+                    v => v.lang.startsWith('en') && v.name.toLowerCase().includes('google') && !v.name.toLowerCase().includes('male'),
+                    v => v.lang.startsWith('en') && v.name.toLowerCase().includes('microsoft') && v.name.toLowerCase().includes('zira'),
+
+                    // Fallback to any good English voice
+                    v => v.lang.startsWith('en') && v.name.toLowerCase().includes('google'),
+                    v => v.lang.startsWith('en') && v.name.toLowerCase().includes('microsoft'),
+                    v => v.lang.startsWith('en-US'),
+                    v => v.lang.startsWith('en'),
+
+                    // Last resort
+                    v => v.default,
+                    v => true // Any voice
+                ];
+
+                for (const preference of voicePreferences) {
+                    selectedVoice = voices.find(preference);
+                    if (selectedVoice) {
+                        console.log(`Selected TTS voice: ${selectedVoice.name} (${selectedVoice.lang})`);
+                        voicesLoaded = true;
+                        return;
+                    }
+                }
+
+                // If nothing found, use first available
+                if (voices.length > 0) {
+                    selectedVoice = voices[0];
+                    console.log(`Fallback TTS voice: ${selectedVoice.name} (${selectedVoice.lang})`);
+                    voicesLoaded = true;
+                }
+            }
+
+            // Load voices immediately if available
+            loadVoices();
+
+            // Also listen for voices loaded event
+            if (!voicesLoaded) {
+                speechSynthesis.onvoiceschanged = function () {
+                    if (!voicesLoaded) {
+                        loadVoices();
+                    }
+                };
+            }
+        }
+
+        // Improved browser TTS with consistent voice and proper queueing
+        function playBrowserTTS(text, sentenceNumber, responseId = null) {
+            if (!text || !text.trim()) return;
+
+            try {
+                if (!('speechSynthesis' in window)) {
+                    console.warn('Speech synthesis not supported');
+                    return;
+                }
+
+                ttsQueue.push({
+                    text: text.trim(),
+                    sentenceNumber: sentenceNumber,
+                    responseId: responseId || Date.now()
+                });
+
+                console.log(`Added to TTS queue: sentence ${sentenceNumber}, queue length: ${ttsQueue.length}`);
+
+                // Start playing if not already playing
+                if (!isTTSPlaying) {
+                    playNextTTS();
+                }
+
+            } catch (error) {
+                console.error('Browser TTS failed:', error);
+            }
+        }
+
+        // Play TTS sequentially
+        function playNextTTS() {
+            if (ttsQueue.length === 0) {
+                isTTSPlaying = false;
+                console.log('TTS queue empty');
+                return;
+            }
+
+            isTTSPlaying = true;
+            const ttsItem = ttsQueue.shift();
+
+            try {
+                const utterance = new SpeechSynthesisUtterance(ttsItem.text);
+
+                // Use the consistently selected voice
+                if (selectedVoice) {
+                    utterance.voice = selectedVoice;
+                    console.log(`Playing TTS: ${selectedVoice.name} for sentence ${ttsItem.sentenceNumber}`);
+                } else {
+                    console.warn('No voice selected, using default');
+                }
+
+                // Configure speech parameters
+                utterance.rate = 0.9;
+                utterance.pitch = 1.1;
+                utterance.volume = 0.8;
+
+                // Event handlers
+                utterance.onstart = function () {
+                    console.log(`TTS started for sentence ${ttsItem.sentenceNumber} with voice: ${utterance.voice ? utterance.voice.name : 'default'}`);
+                };
+
+                utterance.onend = function () {
+                    console.log(`TTS completed for sentence ${ttsItem.sentenceNumber}`);
+                    // Play next in queue after completion
+                    setTimeout(() => {
+                        playNextTTS();
+                    }, 200); // Small pause between sentences
+                };
+
+                utterance.onerror = function (event) {
+                    console.error(`TTS error for sentence ${ttsItem.sentenceNumber}:`, event.error);
+                    // Continue to next sentence even on error
+                    setTimeout(() => {
+                        playNextTTS();
+                    }, 100);
+                };
+
+                // Speak the text
+                speechSynthesis.speak(utterance);
+
+            } catch (error) {
+                console.error('TTS playback error:', error);
+                // Continue to next sentence on error
+                setTimeout(() => {
+                    playNextTTS();
+                }, 100);
+            }
+        }
+
+        // Clear TTS queue when needed
+        function clearTTSQueue(responseId = null) {
+            if (responseId) {
+                // Clear only specific response
+                ttsQueue = ttsQueue.filter(item => item.responseId !== responseId);
+                console.log(`Cleared TTS queue for response ${responseId}, remaining: ${ttsQueue.length}`);
+            } else {
+                // Clear all TTS
+                ttsQueue = [];
+                speechSynthesis.cancel();
+                isTTSPlaying = false;
+                console.log('TTS queue cleared completely');
+            }
+        }
+
+        // Initialize audio context for better browser compatibility
+        function initAudioContext() {
+            if (!audioContext) {
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    console.log('Audio context initialized');
+                } catch (e) {
+                    console.error('Audio context failed:', e);
+                }
+            }
+        }
+
+        // Auto-enable audio on first interaction
+        function enableAudioOnInteraction() {
+            if (!hasUserInteracted) {
+                hasUserInteracted = true;
+                initAudioContext();
+                initializeTTSVoice(); // Initialize TTS voice on interaction
+
+                // Auto-enable audio after first interaction
+                if (!audioEnabled) {
+                    toggleAudio();
+                }
+
+                console.log('Audio auto-enabled after user interaction');
+            }
+        }
+
+        function initWebSocket() {
+            ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+            ws.onopen = function () {
+                console.log("WebSocket connected!");
+                addMessage("Connected to museum assistant!", 'system');
+                reconnectAttempts = 0;
+
+                // Process queued messages
+                while (messageQueue.length > 0) {
+                    const msg = messageQueue.shift();
+                    ws.send(msg);
+                }
+            };
+
+            ws.onmessage = async function (event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log("Received:", data);
+
+                    // Handle different message types
+                    if (data.type === "welcome") {
+                        console.log("Welcome message received!");
+                        addMessage(data.text, 'welcome');
+
+                        // Auto-enable audio on welcome if not already enabled
+                        if (!audioEnabled && hasUserInteracted) {
+                            toggleAudio();
+                        }
+
+                        // Play welcome audio if available
+                        if (data.audio) {
+                            if (audioEnabled || hasUserInteracted) {
+                                await playAudio(data.audio, "Welcome audio");
+                            } else {
+                                addMessage("Click anywhere to enable audio and hear the welcome message!", 'system');
+                            }
+                        }
+
+                    } else if (data.type === "error") {
+                        addMessage("Error: " + data.message, 'system');
+
+                    } else if (data.type === "response") {
+                        // Handle regular (non-streaming) responses
+                        addMessage(data.text, 'bot');
+
+                        if (audioEnabled && data.audio) {
+                            await playAudio(data.audio, "Response audio");
+                        } else if (data.audio && !audioEnabled) {
+                            addMessage("Enable audio to hear the response!", 'system');
+                        }
+
+                        if (data.recognized_text) {
+                            addMessage(`Recognized: "${data.recognized_text}"`, 'system');
+                        }
+
+                    } else if (data.type === "stream_chunk") {
+                        // Handle streaming text chunks
+                        console.log(`Streaming chunk ${data.sentence_number}: ${data.text}`);
+
+                        // Add the sentence to chat immediately
+                        addMessage(data.text, 'bot');
+
+                        // Audio handling with browser TTS fallback
+                        if (audioEnabled) {
+                            if (data.audio && data.audio !== null) {
+                                // Server-side audio available - use it
+                                playAudio(data.audio, `Sentence ${data.sentence_number} audio`);
+                            } else {
+                                // Server-side audio not available - use browser TTS with consistent voice
+                                console.log(`Using browser TTS for: ${data.text}`);
+
+                                if (data.sentence_number === 1) {
+                                    currentResponseId = `response_${Date.now()}`;
+                                    // Clear any old TTS from previous responses
+                                    clearTTSQueue();
+                                }
+
+                                playBrowserTTS(data.text, data.sentence_number, currentResponseId);
+                            }
+                        } else if (data.sentence_number === 1) {
+                            // Only show this message once per response
+                            addMessage("Enable audio to hear responses as they arrive!", 'system');
+                        }
+
+                    } else if (data.type === "stream_complete") {
+                        // Handle end of streaming
+                        console.log(`Streaming complete! Total sentences: ${data.total_sentences}`);
+                        addMessage(`💫 Response complete (${data.total_sentences} sentences)`, 'system');
+                        currentResponseId = null;
+
+                    } else {
+                        console.log("Unknown message type:", data.type);
+                    }
+                } catch (error) {
+                    console.error("Message processing error:", error);
+                    addMessage("Failed to process response", 'system');
+                }
+            };
+
+            ws.onclose = function (event) {
+                console.log("WebSocket closed:", event);
+
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    addMessage(`Connection lost. Reconnecting... (attempt ${reconnectAttempts})`, 'system');
+                    setTimeout(() => {
+                        initWebSocket();
+                    }, 2000 * reconnectAttempts);
+                } else {
+                    addMessage("Connection lost. Please refresh the page.", 'system');
+                }
+            };
+
+            ws.onerror = function (error) {
+                console.error("WebSocket error:", error);
+                addMessage("Connection error occurred. Retrying...", 'system');
+            };
+        }
+
+        function playAudio(audioBase64, description = "Audio") {
+            if (!audioBase64 || audioBase64.length < 100) {
+                console.warn("Invalid audio data");
+                return;
+            }
+
+            // Add to queue instead of playing immediately
+            audioQueue.push({ audioBase64, description });
+            console.log(`Added to audio queue: ${description} (queue length: ${audioQueue.length})`);
+
+            // Start playing if not already playing
+            if (!isPlayingAudio) {
+                playNextInQueue();
+            }
+        }
+
+        function playNextInQueue() {
+            if (audioQueue.length === 0) {
+                isPlayingAudio = false;
+                console.log("Audio queue empty");
+                return;
+            }
+
+            isPlayingAudio = true;
+            const { audioBase64, description } = audioQueue.shift();
+
+            try {
+                console.log(`Playing ${description}: ${audioBase64.length} base64 chars (${audioQueue.length} remaining in queue)`);
+
+                // Stop any currently playing audio
+                if (currentAudioElement) {
+                    currentAudioElement.pause();
+                    currentAudioElement.currentTime = 0;
+                    currentAudioElement = null;
+                }
+
+                // Create new audio element
+                const audio = new Audio();
+                currentAudioElement = audio;
+                audio.preload = 'auto';
+
+                // Google TTS generates MP3
+                audio.src = `data:audio/mp3;base64,${audioBase64}`;
+
+                // Add error handling
+                audio.onerror = function (e) {
+                    console.error(`${description} playback error:`, e);
+                    // Try as WAV fallback
+                    audio.src = `data:audio/wav;base64,${audioBase64}`;
+                };
+
+                // Add load event
+                audio.onloadeddata = function () {
+                    console.log(`${description} loaded, duration: ${audio.duration}s`);
+                };
+
+                // IMPORTANT: Play next audio when this one ends
+                audio.onended = function () {
+                    console.log(`${description} finished playing`);
+                    currentAudioElement = null;
+
+                    // Play next in queue after a brief pause
+                    setTimeout(() => {
+                        playNextInQueue();
+                    }, 300);
+                };
+
+                // Handle audio interruption/pause
+                audio.onpause = function () {
+                    console.log(`${description} paused`);
+                };
+
+                // Play with error handling
+                audio.play().then(() => {
+                    console.log(`${description} started playing successfully`);
+                }).catch(playError => {
+                    console.error(`${description} play failed:`, playError);
+
+                    // Skip to next audio on error
+                    currentAudioElement = null;
+                    setTimeout(() => {
+                        playNextInQueue();
+                    }, 100);
+
+                    // Show user-friendly message
+                    if (audioQueue.length === 0) {
+                        if (playError.name === 'NotAllowedError') {
+                            addMessage("Audio blocked by browser. Please interact with the page first.", 'system');
+                        } else if (playError.name === 'NotSupportedError') {
+                            addMessage("Audio format not supported by browser.", 'system');
+                        }
+                    }
+                });
+
+            } catch (error) {
+                console.error(`${description} setup failed:`, error);
+
+                // Skip to next audio on setup error
+                currentAudioElement = null;
+                setTimeout(() => {
+                    playNextInQueue();
+                }, 100);
+            }
+        }
+
+        // Clear audio queue if needed
+        function clearAudioQueue() {
+            audioQueue = [];
+            if (currentAudioElement) {
+                currentAudioElement.pause();
+                currentAudioElement = null;
+            }
+            isPlayingAudio = false;
+            console.log("Audio queue cleared");
+        }
+
+        // Better audio toggle with audio context
+        function toggleAudio() {
+            if (!audioEnabled) {
+                // Enable audio
+                initAudioContext();
+                initializeTTSVoice(); // Initialize TTS voice when enabling audio
+                audioEnabled = true;
+
+                const btn = document.getElementById('audioToggle');
+                const status = document.getElementById('audioStatus');
+
+                btn.textContent = 'Disable Audio 🔇';
+                btn.classList.add('audio-enabled');
+                status.textContent = 'Audio: ON';
+                addMessage('Audio enabled! You will hear responses.', 'system');
+
+                // Test audio with a beep
+                testAudioBeep();
+
+            } else {
+                // Disable audio
+                audioEnabled = false;
+                clearTTSQueue();
+
+                const btn = document.getElementById('audioToggle');
+                const status = document.getElementById('audioStatus');
+
+                btn.textContent = 'Enable Audio 🔊';
+                btn.classList.remove('audio-enabled');
+                status.textContent = 'Audio: OFF';
+                addMessage('Audio disabled.', 'system');
+            }
+        }
+
+        // Test audio with a simple beep
+        function testAudioBeep() {
+            if (audioContext) {
+                try {
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+
+                    oscillator.frequency.value = 440; // A4 note
+                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + 0.3);
+
+                    console.log('Audio test beep played');
+                } catch (e) {
+                    console.error('Audio test failed:', e);
+                }
+            }
+        }
+
+        function addMessage(text, sender) {
+            const messages = document.getElementById('messages');
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message', `${sender}-message`);
+            messageElement.textContent = text;
+            messages.appendChild(messageElement);
+            messages.scrollTop = messages.scrollHeight;
+
+            // Add audio debug info for bot and welcome messages
+            if ((sender === 'bot' || sender === 'welcome') && audioEnabled) {
+                const debugDiv = document.createElement('div');
+                debugDiv.className = 'audio-debug';
+                debugDiv.textContent = 'Audio should play above ↑';
+                messageElement.appendChild(debugDiv);
+            }
+        }
+
+        function testMessage(message) {
+            document.getElementById('textInput').value = message;
+            sendMessage();
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('textInput');
+            const message = input.value.trim();
+
+            if (message) {
+                addMessage(message, 'user');
+                console.log("Sending:", message);
+
+                clearTTSQueue();
+
+                const payload = JSON.stringify({
+                    type: "text",
+                    message: message
+                });
+
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    try {
+                        ws.send(payload);
+                        console.log("Message sent successfully");
+                    } catch (error) {
+                        console.error("Send failed:", error);
+                        addMessage("Failed to send message: " + error.message, 'system');
+                        messageQueue.push(payload);
+                    }
+                } else {
+                    console.log("WebSocket not ready, queueing message");
+                    messageQueue.push(payload);
+                    addMessage("Connection not ready, message queued", 'system');
+
+                    if (!ws || ws.readyState === WebSocket.CLOSED) {
+                        initWebSocket();
+                    }
+                }
+
+                input.value = '';
+            }
+        }
+
+        // Enhanced recording function
+        async function toggleRecording() {
+            const button = document.getElementById('recordButton');
+
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                addMessage("Speech recognition not supported in this browser. Please use text input.", 'system');
+                return;
+            }
+
+            if (!isRecording) {
+                try {
+                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    const recognition = new SpeechRecognition();
+
+                    recognition.continuous = false;
+                    recognition.interimResults = false;
+                    recognition.lang = 'en-US';
+                    recognition.maxAlternatives = 1;
+
+                    button.classList.add('recording');
+                    addMessage("🎤 Listening... Please speak clearly!", 'system');
+                    isRecording = true;
+
+                    recognition.onresult = function (event) {
+                        const transcript = event.results[0][0].transcript;
+                        const confidence = event.results[0][0].confidence;
+
+                        console.log(`Recognized: "${transcript}" (confidence: ${confidence.toFixed(2)})`);
+                        addMessage(`You said: "${transcript}"`, 'user');
+
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({
+                                type: "text",
+                                message: transcript
+                            }));
+                            console.log("Speech sent as text message");
+                        } else {
+                            addMessage("Connection lost. Please try again.", 'system');
+                        }
+                    };
+
+                    recognition.onerror = function (event) {
+                        console.error("Speech recognition error:", event.error);
+
+                        let errorMessage;
+                        switch (event.error) {
+                            case 'no-speech':
+                                errorMessage = "No speech detected. Please try speaking more clearly.";
+                                break;
+                            case 'audio-capture':
+                                errorMessage = "Microphone not accessible. Please check your microphone.";
+                                break;
+                            case 'not-allowed':
+                                errorMessage = "Microphone permission denied. Please allow microphone access.";
+                                break;
+                            case 'network':
+                                errorMessage = "Network error. Please check your internet connection.";
+                                break;
+                            default:
+                                errorMessage = `Speech recognition error: ${event.error}. Please try again.`;
+                        }
+
+                        addMessage(errorMessage, 'system');
+                    };
+
+                    recognition.onend = function () {
+                        button.classList.remove('recording');
+                        isRecording = false;
+                        console.log("Speech recognition ended");
+                    };
+
+                    recognition.start();
+
+                    setTimeout(() => {
+                        if (isRecording) {
+                            try {
+                                recognition.stop();
+                                addMessage("Recording timed out. Please try again for shorter messages.", 'system');
+                            } catch (e) {
+                                console.log("Recognition already stopped");
+                            }
+                        }
+                    }, 15000);
+
+                } catch (err) {
+                    console.error("Speech recognition setup error:", err);
+                    addMessage(`Speech setup failed: ${err.message}. Please use text input.`, 'system');
+                    isRecording = false;
+                    button.classList.remove('recording');
+                }
+            } else {
+                isRecording = false;
+                button.classList.remove('recording');
+                addMessage("Stopping...", 'system');
+            }
+        }
+
+        // Handle Enter key in input field
+        document.addEventListener('DOMContentLoaded', function () {
+            const textInput = document.getElementById('textInput');
+            textInput.addEventListener('keypress', function (event) {
+                if (event.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+
+            // Initialize WebSocket connection
+            initWebSocket();
+        });
+
+        // Auto-enable audio on any user interaction
+        document.addEventListener('click', function () {
+            enableAudioOnInteraction();
+        }, { once: false });
+
+        document.addEventListener('keypress', function () {
+            enableAudioOnInteraction();
+        }, { once: false });
+
+        document.addEventListener('touchstart', function () {
+            enableAudioOnInteraction();
+        }, { once: false });
+
+    </script>
+</body>
+
+</html>

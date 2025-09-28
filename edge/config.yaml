@@ -1,0 +1,54 @@
+# Simplified configuration without audio
+device:
+  id: "rpi_001"
+  user_id: "child_001"  # Links to chatbot session
+  location: "gallery_entrance"
+  museum_id: "museum_001"
+
+api_gateway:
+  url: "http://your-server-ip/api"  # Your cloud server
+  timeout: 10
+  retry_count: 3
+
+beacon:
+  enabled: true
+  scan_interval: 1  # Scan every second for smooth tracking
+  scan_duration: 0.5  # Quick scans
+  min_rssi: -90  # Ignore very weak signals
+  
+  # Your museum's iBeacons (configure these)
+  beacons:
+    - uuid: "550e8400-e29b-41d4-a716-446655440000"
+      major: 1
+      minor: 1
+      x: 0      # Physical coordinates
+      y: 0
+      zone: "entrance"
+    - uuid: "550e8400-e29b-41d4-a716-446655440000"
+      major: 1  
+      minor: 2
+      x: 10
+      y: 0
+      zone: "paintings_hall"
+    - uuid: "550e8400-e29b-41d4-a716-446655440000"
+      major: 1
+      minor: 3
+      x: 10
+      y: 10
+      zone: "sculpture_room"
+
+camera:
+  enabled: true
+  resolution: [640, 480]
+  format: "jpeg"
+  quality: 85
+  trigger_button_pin: 17  # GPIO pin for button
+
+buffer:
+  database_path: "/home/pi/museum/cache/local.db"
+  sync_interval: 30
+  max_size: 100  # MB
+
+logging:
+  level: "INFO"
+  file: "/home/pi/museum/logs/edge.log"
