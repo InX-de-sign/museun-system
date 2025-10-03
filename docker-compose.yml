@@ -31,11 +31,13 @@ services:
       - DATABASE_URL=postgresql://museum_user:museum_pass@postgres:5432/museum_db
       - REDIS_URL=redis://redis:6379
       - OPENAI_API_KEY=${OPENAI_API_KEY}  # Add to .env file
-      - CV_SERVICE_URL=http://museum_cv:8001
+      # - CV_SERVICE_URL=http://museum_cv:8001
+      - CV_SERVICE_URL=http://yolo_inference:5000
     depends_on:
       - postgres
       - redis
-      - museum_cv
+      # - museum_cv
+      # - yolo_inference
     volumes:
       - ./chatbot:/app
       - chatbot_logs:/app/logs
@@ -49,23 +51,63 @@ services:
       retries: 3
       start_period: 40s
 
-  # CV Service (YOLO) - Commented out until ready
-  museum_cv:
+  # YOLO Inference Service
+  yolo_inference:
     build:
-      context: ./cv
+      context: ./inference
       dockerfile: Dockerfile
-    container_name: museum_cv
+    # image: python:3.11-bullseye  # Use full Debian instead of slim
+    container_name: yolo_inference
     ports:
-      - "8001:8001"
+      - "5000:5000"
     environment:
-      - MODEL_PATH=/app/models
-      - CHATBOT_URL=http://museum_chatbot:8000
+    - CHATBOT_URL=http://museum_chatbot:8000
+    - RTSP_URL=rtsp://mediamtx:8554/cam1
+    - MODEL_PATH=/app/models/best.onnx
+    - INFERENCE_INTERVAL=0.5
+    - DETECTION_COOLDOWN=5
     volumes:
-      - ./cv:/app
-      # - ./models:/app/modelse
+      - ./inference:/app
+    working_dir: /app
+    command: bash -c "apt update && apt install -y libgl1 && pip install -r requirements.txt && python inference_server.py"
     networks:
       - museum_network
     restart: unless-stopped
+    depends_on:
+      - mediamtx
+      - chatbot
+
+  # MediaMTX - RTSP Streaming Server
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: mediamtx
+    ports:
+      - "8554:8554"  # RTSP
+      - "8888:8888"  # HLS
+      - "1935:1935"  # RTMP
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml
+    networks:
+      - museum_network
+    restart: unless-stopped
+
+  # CV Service (YOLO) - Commented out until ready
+  # museum_cv:
+  #   build:
+  #     context: ./cv
+  #     dockerfile: Dockerfile
+  #   container_name: museum_cv
+  #   ports:
+  #     - "8001:8001"
+  #   environment:
+  #     - MODEL_PATH=/app/models
+  #     - CHATBOT_URL=http://museum_chatbot:8000
+  #   volumes:
+  #     - ./cv:/app
+  #     # - ./models:/app/modelse
+  #   networks:
+  #     - museum_network
+  #   restart: unless-stopped
     # deploy:
     #   resources:
     #     reservations:
