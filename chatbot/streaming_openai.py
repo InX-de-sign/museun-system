@@ -1,4 +1,4 @@
-# streaming_openai.py - Streaming text generation for faster responses
+# streaming_openai.py
 import asyncio
 import logging
 from typing import AsyncGenerator, Dict, Any, Optional

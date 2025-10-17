@@ -561,7 +561,7 @@
                         // Audio handling with browser TTS fallback
                         if (audioEnabled) {
                             if (data.audio && data.audio !== null) {
-                                // Server-side audio available - use it
+                                // Server-side audio available (Google TTS)
                                 playAudio(data.audio, `Sentence ${data.sentence_number} audio`);
                             } else {
                                 // Server-side audio not available - use browser TTS with consistent voice

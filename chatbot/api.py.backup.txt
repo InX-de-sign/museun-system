@@ -22,11 +22,11 @@ app = FastAPI()
 # Import your existing components
 from main import HybridMuseumAI  
 from config import load_azure_openai_config
-from streaming_openai import StreamingOpenAI
+# from streaming_openai import StreamingOpenAI
 
 openai_config = load_azure_openai_config()
 assistant = HybridMuseumAI(openai_api_key=openai_config.api_key)
-streaming_ai = StreamingOpenAI()  # New streaming component
+# streaming_ai = StreamingOpenAI()  # New streaming component
 
 # Initialize voice component
 try:
@@ -274,8 +274,6 @@ async def websocket_endpoint(websocket: WebSocket):
     while True:
         try:
             data = await websocket.receive_json()
-            
-# Find this section in your api.py and replace it:
 
             if data["type"] == "text":
                 message = data["message"]
@@ -284,28 +282,20 @@ async def websocket_endpoint(websocket: WebSocket):
                 start_time = time.time()
                 
                 try:
-                    # Check for hardcoded responses first
-                    # hardcoded_response = None
-                    message_lower = message.lower()
-                    # if "lucy" in message_lower or "colorful" in message_lower:
-                    #     hardcoded_response = "Awesome Lucy! Walk forward and turn left. Here's Phoebe Anna Traquair's amazing embroidery!"
-                    # elif "hugging" in message_lower:
-                    #     hardcoded_response = "Great observation! The angel is giving a magical welcome hug. It's super special!"
-                    # elif "fish" in message_lower:
-                    #     hardcoded_response = "That fish is like a fairy godmother helping her! It's not scary at all. Want to see the cafe painting?"
+                    # Get latest CV detection for this user
+                    cv_context = None
+                    if latest_cv_detection["label"] and latest_cv_detection["timestamp"]:
+                        if time.time() - latest_cv_detection["timestamp"] < 30:
+                            cv_context = latest_cv_detection["label"]
+                            logger.info(f"Using CV context: {cv_context}")
                     
-                    # if hardcoded_response:
-                    #     # Send hardcoded response with streaming format
-                    #     await stream_single_response(hardcoded_response, websocket)
-                    # else:
-                    #     # USE FULL ASSISTANT PIPELINE (with database) instead of streaming_ai
-                        # try:
-                    logger.info("Using full assistant pipeline with database...")
-                    
-                    # Get full response from assistant (includes database search)
-                    full_response = await assistant.process_message(message, user_id)
-                    
-                    # Stream the database-enhanced response sentence by sentence
+                    # Pass CV context to assistant
+                    full_response = await assistant.process_message(
+                        message, 
+                        user_id,
+                        cv_detected_artifact=cv_context  # NEW: Pass CV detection
+                    )
+
                     await stream_single_response(full_response, websocket)
                     
                 except Exception as e:
@@ -383,7 +373,7 @@ async def health_check():
         "streaming_enabled": True,
         "voice_available": voice_component is not None,
         "tts_available": voice_component.tts_available if voice_component else False,
-        "openai_available": streaming_ai is not None,
+        "openai_available": True,
         "sentence_by_sentence_tts": True,
         "max_response_length": "100 tokens (very short)",
         "estimated_response_time": "< 1 second first sentence"
@@ -479,6 +469,40 @@ async def test_database():
             "database_found": False
         }
 
+from fastapi import Body
+from typing import Optional
+
+# Store latest CV detection (simple in-memory approach)
+latest_cv_detection = {"label": None, "timestamp": None, "user_id": None}
+
+@app.post("/cv/detection")
+async def receive_cv_detection(
+    label: str = Body(...),
+    user_id: str = Body(...),
+    confidence: Optional[float] = Body(None)
+):
+    """Receive CV detection results from the CV container"""
+    global latest_cv_detection
+    
+    latest_cv_detection = {
+        "label": label,
+        "timestamp": time.time(),
+        "user_id": user_id,
+        "confidence": confidence
+    }
+    
+    logger.info(f"CV detected: {label} for user {user_id} (confidence: {confidence})")
+    
+    return {"status": "received", "label": label}
+
+@app.get("/cv/latest/{user_id}")
+async def get_latest_detection(user_id: str):
+    """Get the latest CV detection for a user"""
+    if latest_cv_detection["user_id"] == "default_user" or latest_cv_detection["user_id"] == user_id:        # Check if detection is recent (within last 30 seconds)
+        if time.time() - latest_cv_detection["timestamp"] < 30:
+            return latest_cv_detection
+    
+    return {"label": None, "message": "No recent detection"}
 
 if __name__ == "__main__":
     import uvicorn
