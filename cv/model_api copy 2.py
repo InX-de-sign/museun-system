@@ -22,11 +22,6 @@ MODEL_PATH = os.getenv("MODEL_PATH", "models/best.onnx")
 CHATBOT_URL = os.getenv("CHATBOT_URL", "http://museum_chatbot:8000")
 DETECTION_COOLDOWN = float(os.getenv("DETECTION_COOLDOWN", "5"))  # seconds between sending same detection
 
-# Detection parameters (matching your working local setup)
-IMGSZ = int(os.getenv("IMGSZ", "640"))  # Image size for inference
-CONF_THRESHOLD = float(os.getenv("CONF_THRESHOLD", "0.75"))  # Confidence threshold (same as your working code)
-DEVICE = os.getenv("DEVICE", "cpu")  # Use CPU for inference
-
 # =============================================================================
 # LOAD YOLO MODEL
 # =============================================================================
@@ -34,14 +29,13 @@ DEVICE = os.getenv("DEVICE", "cpu")  # Use CPU for inference
 logger.info(f"Loading YOLO model from {MODEL_PATH}")
 yolo_model = YOLO(MODEL_PATH, task='detect')
 
-# Warm up model with exact same parameters as inference
+# Warm up model
 logger.info("Warming up YOLO model...")
-width, height = 640, 640
+width, height = 256, 256
 random_img = Image.fromarray(np.random.randint(0, 256, (height, width, 3), dtype=np.uint8), 'RGB')
-warmup_result = yolo_model.predict(source=random_img, imgsz=IMGSZ, conf=CONF_THRESHOLD, device=DEVICE, verbose=False)
+warmup_result = yolo_model([random_img])
 logger.info(f"✅ YOLO model loaded successfully")
 logger.info(f"Model classes: {list(yolo_model.names.values())}")
-logger.info(f"Detection settings: imgsz={IMGSZ}, conf={CONF_THRESHOLD}, device={DEVICE}")
 
 # =============================================================================
 # GLOBAL STATE
@@ -78,53 +72,26 @@ def prediction_loop():
             new_img = False
 
             try:
-                # Perform prediction with EXACT same settings as your working local code
-                # imgsz=640, conf=0.75, device="cpu"
-                prediction = yolo_model.predict(
-                    source=img, 
-                    imgsz=IMGSZ, 
-                    conf=CONF_THRESHOLD, 
-                    device=DEVICE,
-                    verbose=False
-                )
+                # Perform prediction
+                prediction = yolo_model(img)
                 last_prediction_time = time.time()
                 frames_processed += 1
-                
-                # DETAILED LOGGING FOR DEBUGGING
-                print("\n" + "="*80)
-                print(f"🔍 FRAME #{frames_processed} PROCESSED at {time.strftime('%H:%M:%S')}")
-                print("="*80)
                 
                 # Log detection results
                 if prediction[0].boxes is not None and len(prediction[0].boxes) > 0:
                     classes = prediction[0].boxes.cls.int().cpu().numpy()
                     confidences = prediction[0].boxes.conf.cpu().numpy()
-                    bboxes = prediction[0].boxes.xyxy.cpu().numpy()
                     
-                    print(f"✅ DETECTIONS FOUND: {len(classes)} object(s)")
-                    print("-"*80)
-                    
-                    for idx, (cls_idx, conf, bbox) in enumerate(zip(classes, confidences, bboxes)):
+                    for cls_idx, conf in zip(classes, confidences):
                         class_name = prediction[0].names[cls_idx.item()]
-                        print(f"  #{idx+1}: {class_name}")
-                        print(f"       Confidence: {conf:.4f} ({conf*100:.2f}%)")
-                        print(f"       BBox: [{bbox[0]:.1f}, {bbox[1]:.1f}, {bbox[2]:.1f}, {bbox[3]:.1f}]")
                         logger.info(f"🎯 Detected: {class_name} (confidence: {conf:.2f})")
-                    
-                    print("-"*80)
                     
                     # Send detections to chatbot (with cooldown)
                     send_detections_to_chatbot(prediction[0])
                 else:
-                    print("❌ NO DETECTIONS - Frame processed but no objects found")
-                    print(f"   Image size: {img.size if hasattr(img, 'size') else 'unknown'}")
-                    print(f"   Model expects classes: {list(yolo_model.names.values())}")
                     logger.debug("No objects detected in frame")
                 
-                print("="*80 + "\n")
-                
             except Exception as e:
-                print(f"\n❌ PREDICTION ERROR: {e}")
                 logger.error(f"❌ Prediction error: {e}", exc_info=True)
             
             predicting = False
@@ -199,9 +166,6 @@ async def startup_event():
     logger.info("🚀 YOLO Inference Service Starting")
     logger.info("="*60)
     logger.info(f"Model: {MODEL_PATH}")
-    logger.info(f"Image Size: {IMGSZ}")
-    logger.info(f"Confidence Threshold: {CONF_THRESHOLD}")
-    logger.info(f"Device: {DEVICE}")
     logger.info(f"Chatbot: {CHATBOT_URL}")
     logger.info(f"Detection Cooldown: {DETECTION_COOLDOWN}s")
     logger.info("="*60)
@@ -217,7 +181,7 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"⚠️ Cannot connect to chatbot: {e}")
     
-    logger.info("✅ Inference service ready to receive frames from Raspberry Pi")
+    logger.info("✅ Inference service ready to receive frames")
 
 
 @app.get("/")
@@ -262,17 +226,9 @@ async def predict(image: Annotated[bytes, File()]):
     global predicting, img_buffer, new_img
     
     try:
-        # Open image and convert to RGB (important for consistency)
-        img_pil = Image.open(io.BytesIO(image))
-        
-        # Convert to RGB if needed (same as cv2 BGR->RGB conversion)
-        if img_pil.mode != 'RGB':
-            img_pil = img_pil.convert('RGB')
-        
-        img_buffer = img_pil
+        img_buffer = Image.open(io.BytesIO(image))
         new_img = True
         
-        print(f"📥 Frame received: {len(image)} bytes, size={img_pil.size}, mode={img_pil.mode}")
         logger.debug(f"📥 Frame received (size: {len(image)} bytes)")
         return {
             "status": "success",
@@ -280,7 +236,6 @@ async def predict(image: Annotated[bytes, File()]):
             "frames_processed": frames_processed
         }
     except Exception as e:
-        print(f"❌ Error receiving frame: {e}")
         logger.error(f"❌ Error receiving frame: {e}")
         return {
             "status": "error",

@@ -61,6 +61,52 @@ SHORT_FALLBACKS = {
     "kids": "We have awesome art stations and treasure hunts! What sounds fun to you?",
     "default": "Our museum has amazing art! What would you like to explore?"
 }
+# Define stream_response_to_tts_client function BEFORE using it
+async def stream_response_to_tts_client(response_text: str, websocket: WebSocket, client_id: str):
+    """Stream response sentence by sentence to TTS client"""
+    logger.info(f"Streaming response to {client_id}: {response_text[:50]}...")
+    
+    # Split into sentences
+    sentences = re.split(r'[.!?]+', response_text)
+    sentence_count = 0
+    
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+
+        sentence_count += 1
+        sentence_text = sentence + ("!" if sentence_count == 1 else ".")
+        
+        logger.info(f"Sending sentence {sentence_count} to {client_id}: {sentence_text}")
+        
+        # Send to TTS client (RPi will play with espeak)
+        await websocket.send_json({
+            "type": "stream_chunk",
+            "text": sentence_text,
+            "sentence_number": sentence_count,
+            "is_complete": False
+        })
+
+        # Small pause between sentences
+        await asyncio.sleep(0.2)
+    
+    # Send completion signal
+    await websocket.send_json({
+        "type": "stream_complete",
+        "total_sentences": sentence_count,
+        "is_complete": True
+    })
+
+    logger.info(f"Response streaming complete for {client_id}")
+
+# NOW initialize audio_receiver (after tts_connections and stream_func are defined)
+audio_receiver = AudioReceiver(
+    voice_component,
+    assistant=assistant,
+    tts_connections=tts_connections,
+    stream_func=stream_response_to_tts_client
+) if voice_component else None
 
 # ADD this function to your api.py file (after the imports, before the websocket handler):
 
@@ -378,14 +424,18 @@ async def websocket_endpoint(websocket: WebSocket):
             break
 
 # New WebSocket endpoint for RPi audio input
+# Replace the /ws/audio endpoint in api.py with this:
+
 @app.websocket("/ws/audio")
 async def audio_websocket(websocket: WebSocket):
     """WebSocket endpoint for Raspberry Pi audio streaming"""
     await websocket.accept()
     
-    # Generate client ID
-    client_id = f"rpi_{hash(str(websocket.client))}_{int(time.time())}"[-10:]
-    logger.info(f"🎤 Audio WebSocket connected: {client_id}")
+    # Generate temporary ID
+    temp_id = f"rpi_{hash(str(websocket.client))}_{int(time.time())}"[-10:]
+    client_id = temp_id  # Will be updated from registration
+    
+    logger.info(f"🎤 Audio WebSocket connected (temp): {temp_id}")
     
     if not audio_receiver:
         await websocket.send_json({
@@ -396,12 +446,27 @@ async def audio_websocket(websocket: WebSocket):
         return
     
     try:
-        await audio_receiver.handle_client(websocket, client_id)
+        # Wait for registration to get real client_id
+        first_message = await websocket.receive_json()
+        
+        if first_message.get("type") == "register":
+            # Use the client_id from registration
+            client_id = first_message.get("client_id", temp_id)
+            logger.info(f"✅ Audio client registered with ID: {client_id}")
+            
+            # Send back to audio_receiver for full handling
+            # Create a modified handle_client that uses this client_id
+            await audio_receiver.handle_client_with_id(websocket, client_id, first_message)
+        else:
+            # If first message is not registration, use temp_id
+            logger.warning(f"⚠️ First message was not registration, using temp ID")
+            await audio_receiver.handle_client(websocket, temp_id)
+            
     except Exception as e:
         logger.error(f"Audio WebSocket error: {e}")
     finally:
         logger.info(f"🎤 Audio WebSocket disconnected: {client_id}")
-
+        
 # New WebSocket endpoint for RPi TTS output
 @app.websocket("/ws/tts")
 async def tts_websocket(websocket: WebSocket):

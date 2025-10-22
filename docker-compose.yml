@@ -32,7 +32,7 @@ services:
       retries: 3
       start_period: 40s
 
-  # YOLO Inference Service - UPDATED WITH CHATBOT CONNECTION
+  # YOLO Inference Service - Receives frames from Raspberry Pi webcam_client
   yolo_inference:
     build:
       context: ./inference
@@ -43,18 +43,21 @@ services:
     environment:
       - MODEL_PATH=/app/models/best.onnx
       - CHATBOT_URL=http://museum_chatbot:8000
-      - CAMERA_URL=rtsp://mediamtx:8554/cam1  # ← Fixed to use mediamtx
+      # REMOVED: CAMERA_URL - we receive frames via /predict/ instead
       - INFERENCE_INTERVAL=0.5
       - DETECTION_COOLDOWN=5
+      # Detection parameters (matching your working local setup)
+      - IMGSZ=640
+      - CONF_THRESHOLD=0.75
+      - DEVICE=cpu
     volumes:
       - ./inference:/app
     working_dir: /app
     command: bash -c "apt update && apt install -y libgl1 && pip install -r requirements.txt && python -m uvicorn model_api:app --host 0.0.0.0 --port 5000"
     depends_on:
       - chatbot
-      - mediamtx  # ← ADDED: Wait for mediamtx to start
     networks:
-      - museum_network  # ← MAKE SURE THIS IS HERE
+      - museum_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
@@ -62,20 +65,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-  # MediaMTX - RTSP Streaming Server
-  mediamtx:
-    image: bluenviron/mediamtx:latest
-    container_name: mediamtx
-    ports:
-      - "8554:8554"  # RTSP
-      - "8888:8888"  # HLS
-      - "1935:1935"  # RTMP
-    volumes:
-      - ./mediamtx.yml:/mediamtx.yml
-    networks:
-      - museum_network  # ← MAKE SURE THIS IS HERE
-    restart: unless-stopped
 
   # PostgreSQL Database
   postgres:
