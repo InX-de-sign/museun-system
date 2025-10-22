@@ -1,4 +1,4 @@
-# Orchestrating all services together
+# Orchestrating all services together - WITH ZOO DATABASE
 # version: '3.8'
 
 services:
@@ -11,14 +11,22 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://museum_user:museum_pass@postgres:5432/museum_db
+      - DATABASE_URL=postgresql://zoo_user:zoo_password_2024@postgres:5432/zoo_db
       - REDIS_URL=redis://redis:6379
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - CV_SERVICE_URL=http://yolo_inference:5000
       - HOST=0.0.0.0
+      # PostgreSQL Zoo Database
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=zoo_db
+      - POSTGRES_USER=zoo_user
+      - POSTGRES_PASSWORD=zoo_password_2024
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     volumes:
       - ./chatbot:/app
       - chatbot_logs:/app/logs
@@ -43,10 +51,8 @@ services:
     environment:
       - MODEL_PATH=/app/models/best.onnx
       - CHATBOT_URL=http://museum_chatbot:8000
-      # REMOVED: CAMERA_URL - we receive frames via /predict/ instead
       - INFERENCE_INTERVAL=0.5
       - DETECTION_COOLDOWN=5
-      # Detection parameters (matching your working local setup)
       - IMGSZ=640
       - CONF_THRESHOLD=0.75
       - DEVICE=cpu
@@ -66,19 +72,46 @@ services:
       retries: 3
       start_period: 40s
 
-  # PostgreSQL Database
+  # PostgreSQL Database - UPDATED FOR ZOO
   postgres:
-    image: postgres:13
+    image: postgres:15-alpine
     container_name: museum_postgres
     environment:
-      POSTGRES_DB: museum_db
-      POSTGRES_USER: museum_user
-      POSTGRES_PASSWORD: museum_pass
+      POSTGRES_DB: zoo_db
+      POSTGRES_USER: zoo_user
+      POSTGRES_PASSWORD: zoo_password_2024
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # Mount SQL initialization scripts for zoo database
+      - ./chatbot/03_create_zoo_database.sql:/docker-entrypoint-initdb.d/01_create_zoo_database.sql
+      - ./chatbot/04_populate_zoo_data.sql:/docker-entrypoint-initdb.d/02_populate_zoo_data.sql
     ports:
       - "5432:5432"
+    networks:
+      - museum_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zoo_user -d zoo_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # pgAdmin (optional - for database management GUI)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: museum_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@zoo.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_LISTEN_PORT: 80
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
     networks:
       - museum_network
     restart: unless-stopped
@@ -114,6 +147,7 @@ volumes:
   redis_data:
   qdrant_data:
   chatbot_logs:
+  pgadmin_data:
 
 # Define network
 networks:

@@ -50,13 +50,14 @@ class PorcupineWakeDetector:
         access_key: Optional[str] = None,
     ):
         self.on_detect = on_detect
-        self.keyword_path = keyword_path
-        self.keyword_name = "hey siri"
+        self.keyword_path = "/home/pi/museum_client/raspberry_pi/hey-bro_en_raspberry-pi_v3_0_0.ppn"
+        self.keyword_name = "hey bro"
         self.device_index = device_index
-        self.access_key = "sOFyd6WFRhOJe4FUKluZRSMSMCwRXhuMq4MDH568UYto7wMMl397CQ=="
+        self.access_key = "afWRrpT7g4LBTzLY5pGiVMCHXuYPMC9XpBuZsLkAaM/QZPWSrpRdAg=="
 
         self._stop_event = threading.Event()
         self._pause_event = threading.Event()
+        self._stream_closed_event = threading.Event()  # ✅ NEW: Track when stream is actually closed
         self._thread: Optional[threading.Thread] = None
         self._porcupine = None
 
@@ -66,7 +67,7 @@ class PorcupineWakeDetector:
 
         try:
             if self.keyword_path:
-                self._porcupine = pvporcupine.create(keyword_paths=[self.keyword_path])
+                self._porcupine = pvporcupine.create(access_key=self.access_key ,keyword_paths=[self.keyword_path])
             else:
                 # fallback to named keyword if provided
                 if self.keyword_name:
@@ -83,6 +84,7 @@ class PorcupineWakeDetector:
 
         self._stop_event.clear()
         self._pause_event.clear()
+        self._stream_closed_event.set()  # ✅ Initially no stream
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
 
@@ -98,9 +100,19 @@ class PorcupineWakeDetector:
             pass
 
     def pause(self):
+        """Pause detection and release microphone"""
+        logger.info("🔇 Pausing wake word detector...")
         self._pause_event.set()
+        # Wait for stream to actually close (with timeout)
+        if self._stream_closed_event.wait(timeout=2.0):
+            logger.info("✅ Wake word detector paused - microphone released")
+        else:
+            logger.warning("⚠️ Timeout waiting for stream to close")
 
     def resume(self):
+        """Resume detection"""
+        logger.info("🔊 Resuming wake word detector...")
+        self._stream_closed_event.clear()  # Will reopen stream
         self._pause_event.clear()
 
     def _run_loop(self):
@@ -118,10 +130,11 @@ class PorcupineWakeDetector:
                         try:
                             stream.stop_stream()
                             stream.close()
-                        except Exception:
-                            pass
+                            logger.info("🔇 Wake word stream CLOSED")  # ✅ Better logging
+                        except Exception as e:
+                            logger.error(f"Error closing stream: {e}")
                         stream = None
-                        logger.debug("Porcupine: closed stream while paused")
+                        self._stream_closed_event.set()  # ✅ Signal that stream is closed
 
                     while self._pause_event.is_set() and not self._stop_event.is_set():
                         time.sleep(0.05)
@@ -129,6 +142,7 @@ class PorcupineWakeDetector:
 
                 if stream is None:
                     try:
+                        self._stream_closed_event.clear()  # ✅ About to open stream
                         stream = pa.open(
                             format=pyaudio.paInt16,
                             channels=1,
@@ -137,9 +151,10 @@ class PorcupineWakeDetector:
                             frames_per_buffer=frame_length,
                             input_device_index=self.device_index,
                         )
-                        logger.debug("Porcupine: opened audio stream for detection")
+                        logger.info("🔊 Wake word stream OPENED")  # ✅ Better logging
                     except Exception as e:
                         logger.error(f"Porcupine failed to open audio stream: {e}")
+                        self._stream_closed_event.set()
                         time.sleep(0.2)
                         continue
 
@@ -153,6 +168,7 @@ class PorcupineWakeDetector:
                     except Exception:
                         pass
                     stream = None
+                    self._stream_closed_event.set()
                     time.sleep(0.1)
                     continue
 
@@ -181,8 +197,10 @@ class PorcupineWakeDetector:
                 try:
                     stream.stop_stream()
                     stream.close()
+                    logger.info("🔇 Wake word stream closed (cleanup)")
                 except Exception:
                     pass
+                self._stream_closed_event.set()
             try:
                 pa.terminate()
             except Exception:

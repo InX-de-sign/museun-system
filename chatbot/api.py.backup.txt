@@ -2,6 +2,7 @@
 from fastapi import FastAPI, WebSocket, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from audio_receiver import AudioReceiver
 import asyncio
 import json
 import os
@@ -9,6 +10,7 @@ import base64
 import time  
 import logging
 import re
+from typing import Dict, Optional
 
 # Clean logging setup
 logging.basicConfig(
@@ -22,6 +24,7 @@ app = FastAPI()
 # Import your existing components
 from main import HybridMuseumAI  
 from config import load_azure_openai_config
+from audio_receiver import AudioReceiver
 # from streaming_openai import StreamingOpenAI
 
 openai_config = load_azure_openai_config()
@@ -39,6 +42,15 @@ except Exception as e:
     logger.error(f"Voice component initialization failed: {e}")
     voice_component = None
 
+# Initialize audio receiver for RPi
+audio_receiver = AudioReceiver(voice_component) if voice_component else None
+
+# Store active TTS WebSocket connections
+tts_connections: Dict[str, WebSocket] = {}
+
+# Store latest CV detection
+latest_cv_detection = {"label": None, "timestamp": None, "user_id": None}
+
 # Short fallback responses for kids
 SHORT_FALLBACKS = {
     "greet": "Hi there! I'm Artie, your art buddy! What's your name?",
@@ -49,6 +61,52 @@ SHORT_FALLBACKS = {
     "kids": "We have awesome art stations and treasure hunts! What sounds fun to you?",
     "default": "Our museum has amazing art! What would you like to explore?"
 }
+# Define stream_response_to_tts_client function BEFORE using it
+async def stream_response_to_tts_client(response_text: str, websocket: WebSocket, client_id: str):
+    """Stream response sentence by sentence to TTS client"""
+    logger.info(f"Streaming response to {client_id}: {response_text[:50]}...")
+    
+    # Split into sentences
+    sentences = re.split(r'[.!?]+', response_text)
+    sentence_count = 0
+    
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+
+        sentence_count += 1
+        sentence_text = sentence + ("!" if sentence_count == 1 else ".")
+        
+        logger.info(f"Sending sentence {sentence_count} to {client_id}: {sentence_text}")
+        
+        # Send to TTS client (RPi will play with espeak)
+        await websocket.send_json({
+            "type": "stream_chunk",
+            "text": sentence_text,
+            "sentence_number": sentence_count,
+            "is_complete": False
+        })
+
+        # Small pause between sentences
+        await asyncio.sleep(0.2)
+    
+    # Send completion signal
+    await websocket.send_json({
+        "type": "stream_complete",
+        "total_sentences": sentence_count,
+        "is_complete": True
+    })
+
+    logger.info(f"Response streaming complete for {client_id}")
+
+# NOW initialize audio_receiver (after tts_connections and stream_func are defined)
+audio_receiver = AudioReceiver(
+    voice_component,
+    assistant=assistant,
+    tts_connections=tts_connections,
+    stream_func=stream_response_to_tts_client
+) if voice_component else None
 
 # ADD this function to your api.py file (after the imports, before the websocket handler):
 
@@ -365,6 +423,207 @@ async def websocket_endpoint(websocket: WebSocket):
             logger.error(f"WebSocket Error: {str(e)}")
             break
 
+# New WebSocket endpoint for RPi audio input
+# Replace the /ws/audio endpoint in api.py with this:
+
+@app.websocket("/ws/audio")
+async def audio_websocket(websocket: WebSocket):
+    """WebSocket endpoint for Raspberry Pi audio streaming"""
+    await websocket.accept()
+    
+    # Generate temporary ID
+    temp_id = f"rpi_{hash(str(websocket.client))}_{int(time.time())}"[-10:]
+    client_id = temp_id  # Will be updated from registration
+    
+    logger.info(f"🎤 Audio WebSocket connected (temp): {temp_id}")
+    
+    if not audio_receiver:
+        await websocket.send_json({
+            "type": "error",
+            "message": "Audio receiver not available"
+        })
+        await websocket.close()
+        return
+    
+    try:
+        # Wait for registration to get real client_id
+        first_message = await websocket.receive_json()
+        
+        if first_message.get("type") == "register":
+            # Use the client_id from registration
+            client_id = first_message.get("client_id", temp_id)
+            logger.info(f"✅ Audio client registered with ID: {client_id}")
+            
+            # Send back to audio_receiver for full handling
+            # Create a modified handle_client that uses this client_id
+            await audio_receiver.handle_client_with_id(websocket, client_id, first_message)
+        else:
+            # If first message is not registration, use temp_id
+            logger.warning(f"⚠️ First message was not registration, using temp ID")
+            await audio_receiver.handle_client(websocket, temp_id)
+            
+    except Exception as e:
+        logger.error(f"Audio WebSocket error: {e}")
+    finally:
+        logger.info(f"🎤 Audio WebSocket disconnected: {client_id}")
+        
+# New WebSocket endpoint for RPi TTS output
+@app.websocket("/ws/tts")
+async def tts_websocket(websocket: WebSocket):
+    """WebSocket endpoint for streaming text responses to RPi TTS client"""
+    await websocket.accept()
+    
+    try:
+        # Receive registration
+        data = await websocket.receive_json()
+        client_id = data.get("client_id", f"tts_{int(time.time())}")
+        
+        logger.info(f"TTS client connected: {client_id}")
+        
+        # Store connection for routing responses
+        tts_connections[client_id] = websocket
+
+        # Send confirmation
+        await websocket.send_json({
+            "type": "connected",
+            "message": "TTS client registered",
+            "client_id": client_id
+        })
+
+        # Store this connection for routing responses
+        # (You'll need to implement routing logic based on your needs)
+        
+        # Keep connection alive and listen for commands
+        while True:
+            try:
+                message = await asyncio.wait_for(
+                    websocket.receive_json(),
+                    timeout=60.0
+                )
+
+                # Handle different message types from RPi
+                if message.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+                    
+                elif message.get("type") == "text_query":
+                    # RPi sends text query -> process with OpenAI -> stream back
+                    query = message.get("text", "")
+                    logger.info(f"Processing text query from {client_id}: {query}")
+                    
+                    # Process with assistant
+                    try:
+                        response = await assistant.process_message(query, client_id)
+                        
+                        # Stream response back sentence by sentence
+                        await stream_response_to_tts_client(response, websocket, client_id)
+                        
+                    except Exception as e:
+                        logger.error(f"Query processing error: {e}")
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": str(e)
+                        })
+
+            except asyncio.TimeoutError:
+                # Send keepalive
+                await websocket.send_json({"type": "keepalive"})
+            
+    except Exception as e:
+        logger.error(f"TTS WebSocket error: {e}")
+    finally:
+        if client_id in tts_connections:
+            del tts_connections[client_id]
+        logger.info(f"🔊 TTS client disconnected: {client_id}")
+
+async def stream_response_to_tts_client(response_text: str, websocket: WebSocket, client_id: str):
+    """Stream response sentence by sentence to TTS client"""
+    logger.info(f"Streaming response to {client_id}: {response_text[:50]}...")
+    
+    # Split into sentences
+    sentences = re.split(r'[.!?]+', response_text)
+    sentence_count = 0
+    
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+
+        sentence_count += 1
+        sentence_text = sentence + ("!" if sentence_count == 1 else ".")
+        
+        logger.info(f"Sending sentence {sentence_count} to {client_id}: {sentence_text}")
+        
+        # Send to TTS client (RPi will play with espeak)
+        await websocket.send_json({
+            "type": "stream_chunk",
+            "text": sentence_text,
+            "sentence_number": sentence_count,
+            "is_complete": False
+        })
+
+        # Small pause between sentences
+        await asyncio.sleep(0.2)
+    
+    # Send completion signal
+    await websocket.send_json({
+        "type": "stream_complete",
+        "total_sentences": sentence_count,
+        "is_complete": True
+    })
+
+    logger.info(f"Response streaming complete for {client_id}")
+
+@app.websocket("/ws/rpi")
+async def rpi_integrated_websocket(websocket: WebSocket):
+    """Single WebSocket for complete RPi audio -> text -> response -> TTS flow"""
+    await websocket.accept()
+    
+    client_id = f"rpi_{hash(str(websocket.client))}_{int(time.time())}"[-10:]
+    logger.info(f"🤖 Integrated RPi client connected: {client_id}")
+    
+    try:
+        while True:
+            data = await websocket.receive_json()
+            msg_type = data.get("type")
+            
+            # Handle audio streaming
+            if msg_type == "audio_chunk":
+                # Process audio (delegate to audio_receiver logic)
+                audio_base64 = data.get("audio")
+                audio_bytes = base64.b64decode(audio_base64)
+                
+                # For simplicity, accumulate and process on complete
+                # (You can make this streaming like audio_receiver.py)
+                
+            elif msg_type == "audio_complete":
+                # Process complete audio -> STT
+                logger.info("Processing complete audio for STT...")
+                # (Implement STT logic here)
+                
+            elif msg_type == "text_query":
+                # Direct text query -> OpenAI -> TTS
+                query = data.get("text", "")
+                logger.info(f"Text query from {client_id}: {query}")
+                
+                try:
+                    # Get response from assistant
+                    response = await assistant.process_message(query, client_id)
+                    
+                    # Stream back to RPi
+                    await stream_response_to_tts_client(response, websocket, client_id)
+                    
+                except Exception as e:
+                    logger.error(f"Processing error: {e}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": str(e)
+                    })
+                    
+    except Exception as e:
+        logger.error(f"Integrated WebSocket error: {e}")
+    finally:
+        logger.info(f"🤖 Integrated RPi client disconnected: {client_id}")
+
 @app.get("/health")
 async def health_check():
     """Health check with streaming status"""
@@ -378,7 +637,6 @@ async def health_check():
         "max_response_length": "100 tokens (very short)",
         "estimated_response_time": "< 1 second first sentence"
     }
-
 
 @app.get("/test-database")
 async def test_database():
@@ -506,6 +764,10 @@ async def get_latest_detection(user_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    logger.info("Starting Streaming Museum AI Assistant")
-    logger.info("Features: Streaming text + Sentence-by-sentence TTS + Short responses")
+    logger.info("Starting Museum AI Assistant with RPi Integration")
+    logger.info("Endpoints:")
+    logger.info("  - /ws/audio : RPi audio streaming")
+    logger.info("  - /ws/tts : RPi TTS client")
+    logger.info("  - /ws/rpi : Integrated RPi endpoint")
+    logger.info("  - /ws : Browser clients")
     uvicorn.run(app, host="0.0.0.0", port=8000)

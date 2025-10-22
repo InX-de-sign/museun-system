@@ -11,6 +11,12 @@ import time
 import logging
 import re
 from typing import Dict, Optional
+# from main import HybridMuseumAI  
+from main_zoo import HybridZooAI as HybridMuseumAI
+from db_connection import create_zoo_database
+
+from config import load_azure_openai_config
+from audio_receiver import AudioReceiver
 
 # Clean logging setup
 logging.basicConfig(
@@ -21,16 +27,11 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# Import your existing components
-from main import HybridMuseumAI  
-from config import load_azure_openai_config
-from audio_receiver import AudioReceiver
-# from streaming_openai import StreamingOpenAI
-
 openai_config = load_azure_openai_config()
-assistant = HybridMuseumAI(openai_api_key=openai_config.api_key)
+# assistant = HybridMuseumAI(openai_api_key=openai_config.api_key)
 # streaming_ai = StreamingOpenAI()  # New streaming component
-
+zoo_db = create_zoo_database()
+assistant = HybridMuseumAI(openai_api_key=openai_config.api_key, zoo_db=zoo_db)
 # Initialize voice component
 try:
     from optimized_voice import OptimizedVoiceComponent

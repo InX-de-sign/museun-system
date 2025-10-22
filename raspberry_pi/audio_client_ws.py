@@ -1,4 +1,4 @@
-# audio_client_ws.py - Updated for complete workflow
+# audio_client_ws.py - FIXED with ReSpeaker device 0
 import asyncio
 import json
 import base64
@@ -16,15 +16,16 @@ logger = logging.getLogger(__name__)
 class AudioStreamingClient:
     """Records audio on Raspberry Pi and streams to server via WebSocket"""
     
-    def __init__(self, server_url: str, client_id: str = "rpi_default"):
+    def __init__(self, server_url: str, client_id: str = "rpi_default", device_index: int = 0):
         self.server_url = server_url
         self.client_id = client_id
         
-        # Audio settings
-        self.sample_rate = 44100
+        # ✅ FIXED: Audio settings for ReSpeaker device 0
+        self.sample_rate = 16000  # ReSpeaker Lite supports 16000 Hz
         self.channels = 1
         self.chunk_size = 1024
         self.format = pyaudio.paInt16
+        self.device_index = device_index  # ✅ Store device index (default 0 for ReSpeaker)
         
         # Recording state
         self.is_recording = False
@@ -37,32 +38,70 @@ class AudioStreamingClient:
         self.websocket: Optional[websockets.WebSocketClientProtocol] = None
         
         logger.info(f"Audio client initialized: {client_id}")
+        logger.info(f"  Device index: {self.device_index}")
+        logger.info(f"  Sample rate: {self.sample_rate} Hz")
     
-    async def connect(self):
-        """Connect to server WebSocket"""
-        try:
-            self.websocket = await websockets.connect(self.server_url)
-            logger.info(f"Connected to server: {self.server_url}")
-            
-            # Register client
-            await self.websocket.send(json.dumps({
-                "type": "register",
-                "client_id": self.client_id,
-                "audio_settings": {
-                    "sample_rate": self.sample_rate,
-                    "channels": self.channels,
-                    "format": "audio/wav"
-                }
-            }))
-            
-            # Wait for registration confirmation
-            await asyncio.sleep(0.5)
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Connection failed: {e}")
-            return False
+    async def connect(self, max_retries: int = 3, retry_delay: float = 2.0):
+        """Connect to server WebSocket with retry logic"""
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Connecting to {self.server_url} (attempt {attempt + 1}/{max_retries})...")
+                
+                self.websocket = await asyncio.wait_for(
+                    websockets.connect(
+                        self.server_url,
+                        ping_interval=20,
+                        ping_timeout=10,
+                        close_timeout=10,
+                        open_timeout=30,
+                        max_size=10 * 1024 * 1024,
+                    ),
+                    timeout=30.0
+                )
+                
+                logger.info(f"✅ Connected to server: {self.server_url}")
+                
+                # Register client
+                logger.info(f"Registering client: {self.client_id}")
+                await self.websocket.send(json.dumps({
+                    "type": "register",
+                    "client_id": self.client_id,
+                    "audio_settings": {
+                        "sample_rate": self.sample_rate,
+                        "channels": self.channels,
+                        "format": "audio/wav"
+                    }
+                }))
+                
+                # Wait for registration confirmation
+                try:
+                    response = await asyncio.wait_for(
+                        self.websocket.recv(),
+                        timeout=5.0
+                    )
+                    logger.info(f"✅ Registration response: {response[:100]}")
+                except asyncio.TimeoutError:
+                    logger.warning("⚠️ No registration response (continuing anyway)")
+                
+                return True
+                
+            except asyncio.TimeoutError:
+                logger.error(f"❌ Connection timeout (attempt {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    logger.info(f"⏳ Retrying in {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+                else:
+                    logger.error("❌ All connection attempts failed")
+                    return False
+                    
+            except Exception as e:
+                logger.error(f"❌ Connection error (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                else:
+                    return False
+        
+        return False
     
     async def start_recording(self):
         """Start recording and streaming audio"""
@@ -75,12 +114,18 @@ class AudioStreamingClient:
             self.audio_buffer = []
             self.chunk_counter = 0
             
-            # Open audio stream
+            # ✅ FIXED: Open audio stream with ReSpeaker device
+            logger.info(f"Opening audio stream:")
+            logger.info(f"  Device index: {self.device_index}")
+            logger.info(f"  Sample rate: {self.sample_rate} Hz")
+            logger.info(f"  Channels: {self.channels}")
+            
             self.stream = self.audio.open(
                 format=self.format,
                 channels=self.channels,
                 rate=self.sample_rate,
                 input=True,
+                input_device_index=self.device_index,  # ✅ Use ReSpeaker!
                 frames_per_buffer=self.chunk_size
             )
             
@@ -90,7 +135,9 @@ class AudioStreamingClient:
             await self._stream_audio()
             
         except Exception as e:
-            logger.error(f"Recording error: {e}")
+            logger.error(f"❌ Recording error: {e}")
+            logger.error(f"   Make sure ReSpeaker Lite is connected")
+            logger.error(f"   Try: arecord -l")
             self.is_recording = False
     
     async def _stream_audio(self):
@@ -109,20 +156,29 @@ class AudioStreamingClient:
                 
                 # Send to server
                 if self.websocket:
-                    await self.websocket.send(json.dumps({
-                        "type": "audio_chunk",
-                        "audio": audio_base64,
-                        "chunk_id": self.chunk_counter,
-                        "timestamp": datetime.now().timestamp(),
-                        "format": "audio/wav",
-                        "sample_rate": self.sample_rate,
-                        "channels": self.channels
-                    }))
-                    
-                    self.chunk_counter += 1
-                    
-                    if self.chunk_counter % 20 == 0:  # Log every 20 chunks
-                        logger.info(f"Sent {self.chunk_counter} audio chunks")
+                    try:
+                        await asyncio.wait_for(
+                            self.websocket.send(json.dumps({
+                                "type": "audio_chunk",
+                                "audio": audio_base64,
+                                "chunk_id": self.chunk_counter,
+                                "timestamp": datetime.now().timestamp(),
+                                "format": "audio/wav",
+                                "sample_rate": self.sample_rate,
+                                "channels": self.channels
+                            })),
+                            timeout=5.0
+                        )
+                        
+                        self.chunk_counter += 1
+                        
+                        if self.chunk_counter % 20 == 0:
+                            logger.info(f"Sent {self.chunk_counter} audio chunks")
+                            
+                    except asyncio.TimeoutError:
+                        logger.error(f"⚠️ Timeout sending chunk {self.chunk_counter}")
+                    except Exception as e:
+                        logger.error(f"⚠️ Error sending chunk {self.chunk_counter}: {e}")
                 
                 # Small delay
                 await asyncio.sleep(0.01)
@@ -160,7 +216,7 @@ class AudioStreamingClient:
             
             logger.info(f"🛑 Recording stopped. Total chunks: {self.chunk_counter}")
             
-            # Send completion signal to trigger STT → OpenAI workflow
+            # Send completion signal
             if self.websocket:
                 await self.websocket.send(json.dumps({
                     "type": "audio_complete",
@@ -170,14 +226,14 @@ class AudioStreamingClient:
                 }))
                 logger.info("✅ Sent audio_complete signal to server")
             
-            # Optionally save complete audio file
+            # Save complete audio file
             await self._save_complete_audio()
             
         except Exception as e:
             logger.error(f"Stop recording error: {e}")
     
     async def _save_complete_audio(self):
-        """Save the complete recording locally (optional backup)"""
+        """Save the complete recording locally"""
         if not self.audio_buffer:
             return
         
@@ -201,31 +257,8 @@ class AudioStreamingClient:
         except Exception as e:
             logger.error(f"Save error: {e}")
     
-    async def listen_for_responses(self):
-        """Listen for STT results and responses from server"""
-        try:
-            while True:
-                if not self.websocket:
-                    break
-                
-                message = await self.websocket.recv()
-                data = json.loads(message)
-                
-                if data.get("type") == "stt_result":
-                    text = data.get("text", "")
-                    logger.info(f"🎤 STT Result: '{text}'")
-                    
-                elif data.get("type") == "error":
-                    logger.error(f"❌ Server error: {data.get('message')}")
-                    
-        except Exception as e:
-            logger.error(f"Listen error: {e}")
-    
     async def record_for_duration(self, duration_seconds: float):
-        """
-        Record for a specific duration
-        Perfect for the complete workflow!
-        """
+        """Record for a specific duration"""
         logger.info(f"🎤 Recording for {duration_seconds} seconds...")
         
         # Start recording
@@ -234,7 +267,7 @@ class AudioStreamingClient:
         # Wait for duration
         await asyncio.sleep(duration_seconds)
         
-        # Stop recording (this will trigger audio_complete message)
+        # Stop recording
         await self.stop_recording()
         
         # Cancel recording task
@@ -249,7 +282,13 @@ class AudioStreamingClient:
         logger.info("🧹 Cleaning up audio client...")
         
         if self.stream:
-            self.stream.stop_stream()
-            self.stream.close()
+            try:
+                self.stream.stop_stream()
+                self.stream.close()
+            except:
+                pass
         
-        self.audio.terminate()
+        try:
+            self.audio.terminate()
+        except:
+            pass
