@@ -142,7 +142,7 @@ class HybridMuseumAI:
             return 'advanced_local_artifact'
         
         # Check for basic artwork queries
-        artwork_keywords = ["van gogh", "lady jane", "jane grey", "traquair", "victory", "cafe terrace"]
+        artwork_keywords = ["van gogh", "lady jane", "jane grey", "traquair", "victory", "cafe terrace", "openfish", "robot fish", "fish"]
         basic_indicators = ["what is", "tell me about", "describe", "where is", "who painted"]
         
         has_artwork = any(keyword in message_lower for keyword in artwork_keywords)
@@ -289,7 +289,10 @@ class HybridMuseumAI:
         artists = {
             "van gogh": "Van Gogh",
             "delaroche": "Delaroche", 
-            "traquair": "Traquair"
+            "traquair": "Traquair",
+            "van den berg": "van den Berg",  
+            "scharff": "Scharff",            
+            "rusák": "Rusák" 
         }
         
         for key, name in artists.items():

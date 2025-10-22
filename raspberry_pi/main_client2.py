@@ -1,17 +1,16 @@
-# main_client.py - With wake word detection integrated
+# main_client.py - Complete workflow (client-side only)
 import asyncio
 import logging
 import json
-import os
 from audio_client_ws import AudioStreamingClient
 from tts_client import TTSClient
-from wakeword_detector import PorcupineWakeDetector  # <-- IMPORT WAKE WORD DETECTOR
+from wakeword_detector import PorcupineWakeDetector
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class MuseumRPiClient:
-    """Complete Raspberry Pi client with wake word detection"""
+    """Complete Raspberry Pi client with full conversational workflow"""
     
     def __init__(self, server_url: str, client_id: str = "rpi_museum"):
         self.server_url = server_url
@@ -29,7 +28,7 @@ class MuseumRPiClient:
             client_id
         )
         
-        # Wake word detector
+        # initialize detector
         self.wake_detector = None
         self.wake_detected = False
         
@@ -38,7 +37,7 @@ class MuseumRPiClient:
         self.stt_result = None
         
     async def start(self):
-        """Start audio, TTS, and wake word detector"""
+        """Start both audio and TTS clients"""
         logger.info("Starting Museum RPi Client...")
         
         self.is_running = True
@@ -51,25 +50,10 @@ class MuseumRPiClient:
         # Start TTS client in background
         tts_task = asyncio.create_task(self.tts_client.connect_and_listen())
         
-        # Start audio listening task
+        # Start audio listening task with custom handler
         audio_listen_task = asyncio.create_task(
             self._listen_for_audio_responses()
         )
-        
-        # Initialize and start wake word detector
-        try:
-            self.wake_detector = PorcupineWakeDetector(
-                on_detect=self._on_wake_word_detected,
-                keyword_path="wake_words/hey_siri.ppn" if os.path.exists("wake_words/hey_siri.ppn") else None,
-                keyword_name="hey siri",
-                device_index=None,  # Use default device
-                access_key="sOFyd6WFRhOJe4FUKluZRSMSMCwRXhuMq4MDH568UYto7wMMl397CQ=="
-            )
-            self.wake_detector.start()
-            logger.info("✅ Wake word detector started!")
-        except Exception as e:
-            logger.error(f"⚠️ Wake word detector failed: {e}")
-            logger.info("Continuing without wake word detection")
         
         logger.info("✅ Museum RPi Client started successfully!")
         logger.info("Press Ctrl+C to stop")
@@ -80,13 +64,12 @@ class MuseumRPiClient:
                 print("\n" + "="*50)
                 print("Museum AI Assistant - Raspberry Pi")
                 print("="*50)
-                print("1. 🎤 Voice Conversation with WAKE WORD (say 'Hey Siri')")
-                print("2. 🎤 Voice Conversation (NO wake word, immediate)")
-                print("3. Record 5 seconds")
-                print("4. Record 10 seconds")
-                print("5. Manual recording (press Enter to stop)")
-                print("6. Send text query")
-                print("7. Exit")
+                print("1. 🎤 Voice Conversation (COMPLETE WORKFLOW)")
+                print("2. Record 5 seconds")
+                print("3. Record 10 seconds")
+                print("4. Manual recording (press Enter to stop)")
+                print("5. Send text query")
+                print("6. Exit")
                 print("="*50)
                 
                 choice = await asyncio.get_event_loop().run_in_executor(
@@ -94,24 +77,20 @@ class MuseumRPiClient:
                 )
                 
                 if choice == "1":
-                    # *** WITH WAKE WORD ***
-                    await self.conversation_with_wake_word()
-                    
-                elif choice == "2":
-                    # *** WITHOUT WAKE WORD (original) ***
+                    # *** COMPLETE CONVERSATIONAL WORKFLOW ***
                     await self.complete_conversation_workflow()
                     
-                elif choice == "3":
+                elif choice == "2":
                     await self.audio_client.record_for_duration(5.0)
                     print("⏳ Waiting for server response...")
-                    await asyncio.sleep(3)
+                    await asyncio.sleep(3)  # Wait for processing
                     
-                elif choice == "4":
+                elif choice == "3":
                     await self.audio_client.record_for_duration(10.0)
                     print("⏳ Waiting for server response...")
                     await asyncio.sleep(3)
                     
-                elif choice == "5":
+                elif choice == "4":
                     print("🎤 Recording... Press Enter to stop")
                     recording_task = asyncio.create_task(
                         self.audio_client.start_recording()
@@ -124,7 +103,7 @@ class MuseumRPiClient:
                     print("⏳ Waiting for server response...")
                     await asyncio.sleep(3)
                     
-                elif choice == "6":
+                elif choice == "5":
                     text = await asyncio.get_event_loop().run_in_executor(
                         None, input, "Enter your question: "
                     )
@@ -139,7 +118,7 @@ class MuseumRPiClient:
                         print("⏳ Waiting for AI response...")
                         await asyncio.sleep(2)
                     
-                elif choice == "7":
+                elif choice == "6":
                     logger.info("Exiting...")
                     self.is_running = False
                     break
@@ -148,9 +127,6 @@ class MuseumRPiClient:
             logger.info("Interrupted by user")
         finally:
             # Cleanup
-            if self.wake_detector:
-                self.wake_detector.stop()
-            
             self.audio_client.cleanup()
             self.tts_client.shutdown()
             
@@ -166,126 +142,23 @@ class MuseumRPiClient:
             except asyncio.CancelledError:
                 pass
 
-    def _on_wake_word_detected(self):
-        """Callback from PorcupineWakeDetector when wake word is heard"""
-        logger.info("👂 Wake word detected!")
-        self.wake_detected = True
-
-    async def _wait_for_wake_word(self):
-        """Wait until wake word is detected"""
-        self.wake_detected = False
-        logger.info("👂 Listening for wake word 'Hey Siri'...")
-        print("👂 Say 'Hey Siri' to start...")
-        
-        # Wait for detection flag
-        timeout = 60  # 60 second timeout
-        start_time = asyncio.get_event_loop().time()
-        
-        while not self.wake_detected:
-            await asyncio.sleep(0.1)
-            if asyncio.get_event_loop().time() - start_time > timeout:
-                logger.warning("⏰ Wake word timeout")
-                return False
-        
-        return True
-
-    async def conversation_with_wake_word(self):
-        """
-        🎯 CONVERSATION WITH WAKE WORD:
-        0. Wait for wake word "Hey Siri"
-        1. Record audio from microphone
-        2. Send to server → STT
-        3. Server sends to OpenAI
-        4. Server streams response back
-        5. TTS plays response
-        """
-        print("\n" + "🎤 " + "="*48)
-        print("VOICE CONVERSATION WITH WAKE WORD")
-        print("="*50)
-        
-        self.waiting_for_response = True
-        self.stt_result = None
-        
-        try:
-            # STEP 0: Wait for wake word
-            print("\n👂 STEP 0: Waiting for wake word...")
-            if self.wake_detector:
-                if not await self._wait_for_wake_word():
-                    print("❌ Wake word timeout")
-                    return
-                print("✅ Wake word detected!")
-                
-                # Pause wake word detector during recording
-                self.wake_detector.pause()
-            else:
-                print("⚠️ Wake word detector not available, starting immediately")
-            
-            # STEP 1: Record audio
-            print("\n📍 STEP 1: Recording your voice...")
-            print("🎤 Speak now! (Recording for 5 seconds)")
-            print("-" * 50)
-            
-            await self.audio_client.record_for_duration(5.0)
-            
-            print("✅ Recording complete!")
-            
-            # STEP 2: Wait for STT result
-            print("\n📍 STEP 2: Converting speech to text...")
-            print("⏳ Processing with OpenAI Whisper...")
-            
-            timeout = 15
-            start_time = asyncio.get_event_loop().time()
-            
-            while self.stt_result is None:
-                await asyncio.sleep(0.1)
-                if asyncio.get_event_loop().time() - start_time > timeout:
-                    print("❌ Timeout waiting for STT result")
-                    return
-            
-            print(f"✅ You said: '{self.stt_result}'")
-            
-            # STEP 3: Server processes with OpenAI
-            print("\n📍 STEP 3: Getting AI response from OpenAI...")
-            print("🤖 Processing your question...")
-            
-            # STEP 4: Wait for response
-            print("\n📍 STEP 4: Receiving and playing AI response...")
-            print("🔊 Playing through speakers...")
-            print("-" * 50)
-            
-            await asyncio.sleep(20)
-            
-            print("-" * 50)
-            print("✅ Conversation complete!")
-            print("="*50)
-            
-        except Exception as e:
-            logger.error(f"Workflow error: {e}")
-            print(f"❌ Error: {e}")
-        finally:
-            self.waiting_for_response = False
-            
-            # Resume wake word detector
-            if self.wake_detector:
-                self.wake_detector.resume()
-                logger.info("👂 Wake word detector resumed")
-
     async def complete_conversation_workflow(self):
         """
-        Original workflow WITHOUT wake word
+        🎯 COMPLETE WORKFLOW:
+        1. Record audio from microphone
+        2. Send to server → Server does STT (speech-to-text)
+        3. Server sends to OpenAI
+        4. Server streams response back
+        5. TTS plays response via espeak-ng
         """
         print("\n" + "🎤 " + "="*48)
-        print("COMPLETE VOICE CONVERSATION (NO WAKE WORD)")
+        print("COMPLETE VOICE CONVERSATION WORKFLOW")
         print("="*50)
         
         self.waiting_for_response = True
         self.stt_result = None
         
         try:
-            # Pause wake detector if running
-            if self.wake_detector:
-                self.wake_detector.pause()
-            
             # STEP 1: Record audio
             print("\n📍 STEP 1: Recording your voice...")
             print("🎤 Speak now! (Recording for 5 seconds)")
@@ -295,11 +168,12 @@ class MuseumRPiClient:
             
             print("✅ Recording complete!")
             
-            # STEP 2: Wait for STT result
+            # STEP 2: Wait for STT result from server
             print("\n📍 STEP 2: Converting speech to text...")
             print("⏳ Processing with OpenAI Whisper...")
             
-            timeout = 15
+            # Wait for STT result (server will send it back)
+            timeout = 15  # 15 second timeout
             start_time = asyncio.get_event_loop().time()
             
             while self.stt_result is None:
@@ -310,16 +184,18 @@ class MuseumRPiClient:
             
             print(f"✅ You said: '{self.stt_result}'")
             
-            # STEP 3: Server processes
+            # STEP 3: Server automatically sends to OpenAI
             print("\n📍 STEP 3: Getting AI response from OpenAI...")
             print("🤖 Processing your question...")
             
-            # STEP 4: Wait for response
+            # STEP 4: Wait for response to start streaming
             print("\n📍 STEP 4: Receiving and playing AI response...")
             print("🔊 Playing through speakers...")
             print("-" * 50)
             
-            await asyncio.sleep(20)
+            # The TTS client will automatically receive and play the response
+            # Wait for the response to complete (give enough time)
+            await asyncio.sleep(20)  # Adjust based on expected response length
             
             print("-" * 50)
             print("✅ Conversation complete!")
@@ -330,13 +206,9 @@ class MuseumRPiClient:
             print(f"❌ Error: {e}")
         finally:
             self.waiting_for_response = False
-            
-            # Resume wake detector
-            if self.wake_detector:
-                self.wake_detector.resume()
     
     async def _listen_for_audio_responses(self):
-        """Listen for server responses"""
+        """Listen for server responses and update workflow status"""
         try:
             while True:
                 if not self.audio_client.websocket:
@@ -349,8 +221,9 @@ class MuseumRPiClient:
                 message_type = data.get("type")
                 
                 if message_type == "stt_result":
+                    # Speech-to-text result from server
                     text = data.get("text", "")
-                    self.stt_result = text
+                    self.stt_result = text  # Store for workflow
                     logger.info(f"🎤 STT: '{text}'")
                     
                 elif message_type == "stt_processing":
@@ -363,6 +236,7 @@ class MuseumRPiClient:
                     logger.info("🔊 Starting audio playback...")
                     
                 elif message_type == "response_chunk":
+                    # Server sending response chunks (for logging)
                     text = data.get("text", "")
                     logger.info(f"💬 AI: {text[:50]}...")
                     
@@ -385,7 +259,8 @@ class MuseumRPiClient:
 
 async def main():
     """Main entry point"""
-    SERVER_URL = "ws://100.88.240.42:8000"
+    # CHANGE THIS to your server IP
+    SERVER_URL = "ws://100.88.240.42:8000"  # Replace with your PC's IP
     CLIENT_ID = "rpi_museum_1"
     
     print("="*50)
