@@ -1,24 +1,7 @@
-# orchastrating all services together
-version: '3.8'
+# Orchestrating all services together - WITH ZOO DATABASE
+# version: '3.8'
 
 services:
-  # Simple Nginx setup
-  # nginx:
-  #   image: nginx:alpine        # Use official Nginx image
-  #   container_name: api_gateway
-  #   ports:
-  #     - "80:80"                # Expose port 80
-  #     - "443:443"              # HTTPS (optional)
-  #   volumes:
-  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro  # Mount config
-  #   depends_on:
-  #     - chatbot
-  #     # - cv-service           # Uncomment when CV service is ready
-  #     # - localization         # Uncomment when localization is ready
-  #   networks:
-  #     - museum_network
-  #   restart: unless-stopped
-
   # Chatbot Service (FastAPI)
   chatbot:
     build: 
@@ -28,14 +11,22 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://museum_user:museum_pass@postgres:5432/museum_db
+      - DATABASE_URL=postgresql://zoo_user:zoo_password_2024@postgres:5432/zoo_db
       - REDIS_URL=redis://redis:6379
-      - OPENAI_API_KEY=${OPENAI_API_KEY}  # Add to .env file
-      - CV_SERVICE_URL=http://museum_cv:8001
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CV_SERVICE_URL=http://yolo_inference:5000
+      - HOST=0.0.0.0
+      # PostgreSQL Zoo Database
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=zoo_db
+      - POSTGRES_USER=zoo_user
+      - POSTGRES_PASSWORD=zoo_password_2024
     depends_on:
-      - postgres
-      - redis
-      - museum_cv
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     volumes:
       - ./chatbot:/app
       - chatbot_logs:/app/logs
@@ -49,75 +40,78 @@ services:
       retries: 3
       start_period: 40s
 
-  # CV Service (YOLO) - Commented out until ready
-  museum_cv:
+  # YOLO Inference Service - Receives frames from Raspberry Pi webcam_client
+  yolo_inference:
     build:
-      context: ./cv
+      context: ./inference
       dockerfile: Dockerfile
-    container_name: museum_cv
+    container_name: yolo_inference
     ports:
-      - "8001:8001"
+      - "5000:5000"
     environment:
-      - MODEL_PATH=/app/models
+      - MODEL_PATH=/app/models/best.onnx
       - CHATBOT_URL=http://museum_chatbot:8000
+      - INFERENCE_INTERVAL=0.5
+      - DETECTION_COOLDOWN=5
+      - IMGSZ=640
+      - CONF_THRESHOLD=0.75
+      - DEVICE=cpu
     volumes:
-      - ./cv:/app
-      # - ./models:/app/modelse
+      - ./inference:/app
+    working_dir: /app
+    command: bash -c "apt update && apt install -y libgl1 && pip install -r requirements.txt && python -m uvicorn model_api:app --host 0.0.0.0 --port 5000"
+    depends_on:
+      - chatbot
     networks:
       - museum_network
     restart: unless-stopped
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  # Localization Service - Commented out until ready
-  # localization:
-  #   build:
-  #     context: ./localization
-  #     dockerfile: Dockerfile
-  #   container_name: museum_localization
-  #   ports:
-  #     - "8002:8002"
-  #   environment:
-  #     - INFLUXDB_URL=http://influxdb:8086
-  #   depends_on:
-  #     - influxdb
-  #   networks:
-  #     - museum_network
-  #   restart: unless-stopped
-
-  # Analytics Service - Commented out until ready
-  # analytics:
-  #   build:
-  #     context: ./analytics
-  #     dockerfile: Dockerfile
-  #   container_name: museum_analytics
-  #   ports:
-  #     - "8003:8003"
-  #   depends_on:
-  #     - postgres
-  #     - redis
-  #   networks:
-  #     - museum_network
-  #   restart: unless-stopped
-
-  # PostgreSQL Database
+  # PostgreSQL Database - UPDATED FOR ZOO
   postgres:
-    image: postgres:13
+    image: postgres:15-alpine
     container_name: museum_postgres
     environment:
-      POSTGRES_DB: museum_db
-      POSTGRES_USER: museum_user
-      POSTGRES_PASSWORD: museum_pass
+      POSTGRES_DB: zoo_db
+      POSTGRES_USER: zoo_user
+      POSTGRES_PASSWORD: zoo_password_2024
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # Mount SQL initialization scripts for zoo database
+      - ./chatbot/03_create_zoo_database.sql:/docker-entrypoint-initdb.d/01_create_zoo_database.sql
+      - ./chatbot/04_populate_zoo_data.sql:/docker-entrypoint-initdb.d/02_populate_zoo_data.sql
     ports:
       - "5432:5432"
+    networks:
+      - museum_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zoo_user -d zoo_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # pgAdmin (optional - for database management GUI)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: museum_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@zoo.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_LISTEN_PORT: 80
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
     networks:
       - museum_network
     restart: unless-stopped
@@ -153,88 +147,9 @@ volumes:
   redis_data:
   qdrant_data:
   chatbot_logs:
+  pgadmin_data:
 
 # Define network
 networks:
   museum_network:
     driver: bridge
-
-
-# # Kong Section
-# services:
-#   # Kong needs its own database
-#   kong-db:
-#     image: postgres:13
-#     container_name: kong-database
-#     environment:
-#       POSTGRES_USER: kong
-#       POSTGRES_PASSWORD: kong_password
-#       POSTGRES_DB: kong
-#     volumes:
-#       - kong_data:/var/lib/postgresql/data
-#     networks:
-#       - museum_network
-
-#   # Kong migrations (run once)
-#   kong-migrations:
-#     image: kong:3.4
-#     container_name: kong-migrations
-#     command: kong migrations bootstrap
-#     environment:
-#       KONG_DATABASE: postgres
-#       KONG_PG_HOST: kong-db
-#       KONG_PG_USER: kong
-#       KONG_PG_PASSWORD: kong_password
-#       KONG_PG_DATABASE: kong
-#     depends_on:
-#       - kong-db
-#     networks:
-#       - museum_network
-
-#   # Kong API Gateway
-#   kong:
-#     image: kong:3.4
-#     container_name: kong-gateway
-#     environment:
-#       KONG_DATABASE: postgres
-#       KONG_PG_HOST: kong-db
-#       KONG_PG_USER: kong
-#       KONG_PG_PASSWORD: kong_password
-#       KONG_PG_DATABASE: kong
-#       KONG_PROXY_LISTEN: 0.0.0.0:8000
-#       KONG_ADMIN_LISTEN: 0.0.0.0:8001
-#       KONG_DECLARATIVE_CONFIG: /opt/kong/kong.yml
-#     ports:
-#       - "80:8000"        # Proxy port
-#       - "8001:8001"      # Admin API
-#     volumes:
-#       - ./kong/kong.yml:/opt/kong/kong.yml
-#     depends_on:
-#       - kong-db
-#       - kong-migrations
-#       - chatbot
-#       - cv-service
-#       - localization
-#     networks:
-#       - museum_network
-
-#   # Optional: Kong Admin UI (Konga)
-#   konga:
-#     image: pantsel/konga:latest
-#     container_name: kong-admin-ui
-#     environment:
-#       NODE_ENV: production
-#       DB_ADAPTER: postgres
-#       DB_HOST: kong-db
-#       DB_USER: kong
-#       DB_PASSWORD: kong_password
-#       DB_DATABASE: konga
-#     ports:
-#       - "1337:1337"
-#     depends_on:
-#       - kong
-#     networks:
-#       - museum_network
-
-# volumes:
-#   kong_data:

@@ -1,3 +1,4 @@
+# optimized_voice.py serves two purposes: 1. server side google TTS, 2. 
 # optimized_voice.py - GOOGLE TTS VERSION (NO TRUNCATION)
 import io
 import base64

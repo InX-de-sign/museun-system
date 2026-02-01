@@ -1,0 +1,226 @@
+-- Connect to zoo_db
+\c zoo_db;
+
+-- Insert animals from Ocean Park data
+
+-- Capybara
+INSERT INTO animals (
+    animal_id, common_name, scientific_name, distribution_range, habitat,
+    classification, characteristics, body_length, weight, diet,
+    location_in_park, zone, description, fun_facts, threats, conservation_message
+) VALUES (
+    'capybara_001',
+    'Capybara',
+    'Hydrochoerus hydrochaeris',
+    'Central and northern South America',
+    'Wetlands and riversides',
+    '{"phylum": "Chordata", "class": "Mammalia", "order": "Rodentia", "family": "Caviidae", "genus": "Hydrochoerus"}',
+    'World''s largest rodent; eyes, ears, mouth, and nose positioned at the top of the head for diving; water-loving behavior, enjoys baths and playing with enrichment items',
+    'Up to 134 cm',
+    'Up to 66 kg',
+    'Carrots, sweet potatoes, lettuce, peas, and apples',
+    'Expedition Trail; Rainforest; Waterfront Plaza (for events)',
+    'Rainforest',
+    'The capybara is the world''s largest rodent! They are semi-aquatic mammals that love water and are excellent swimmers. Their eyes, ears, and nostrils are positioned on top of their heads, which helps them stay alert while mostly submerged in water.',
+    'Capybaras are super social and live in groups of 10-20! They make different sounds like purrs, barks, and whistles to talk to each other. They are so friendly that birds often sit on their backs!',
+    'Habitat loss and illegal wildlife trade',
+    'Avoid products from threatened species to combat over-hunting and illegal wildlife trade'
+);
+
+-- Red Panda
+INSERT INTO animals (
+    animal_id, common_name, scientific_name, distribution_range, habitat,
+    classification, characteristics, body_length, weight, diet,
+    location_in_park, zone, description, fun_facts, threats, conservation_message
+) VALUES (
+    'red_panda_001',
+    'Red Panda',
+    'Ailurus fulgens',
+    'Bamboo forests throughout the Himalayas, including China, Nepal, and India',
+    'Bamboo forests',
+    '{"phylum": "Chordata", "class": "Mammalia", "order": "Carnivora", "family": "Ailuridae", "genus": "Ailurus"}',
+    'Active and playful, responds to training like target practice and scales; has an extra "thumb" (wrist bone extension) for grasping bamboo',
+    '56-63 cm',
+    '4-6 kg',
+    'Mainly bamboo (3-5 kg per day), plus acorns, roots, berries, lichens, eggs, and birds',
+    'Amazing Asian Animals I Waterfront',
+    'Waterfront',
+    'Red pandas are adorable tree-dwelling mammals from the mountains of Asia. Despite their name, they are not closely related to giant pandas! They spend most of their time in trees and have a bushy ringed tail that helps them balance.',
+    'Red pandas have a special "thumb" that is actually an extended wrist bone! This helps them grip bamboo. They eat 3-5 kg of bamboo every day - that''s like eating 200 apples!',
+    'Habitat loss and poaching; population dropped 50% in 20 years',
+    'Support FSC-certified products to protect forests'
+);
+
+-- Giant Panda
+INSERT INTO animals (
+    animal_id, common_name, scientific_name, distribution_range, habitat,
+    classification, characteristics, body_length, weight, diet,
+    lifespan, conservation_status,
+    location_in_park, zone, description, fun_facts, threats, conservation_message
+) VALUES (
+    'giant_panda_001',
+    'Giant Panda',
+    'Ailuropoda melanoleuca',
+    'Bamboo forests, endemic to Sichuan, Shaanxi, and Gansu provinces in China',
+    'Bamboo forests',
+    '{"phylum": "Chordata", "class": "Mammalia", "order": "Carnivora", "family": "Ursidae", "genus": "Ailuropoda"}',
+    'Newborns weigh about 100 grams, adults up to 1,000 times heavier; need 4,300-5,500 kcal/day (equivalent to 20 bowls of rice); enjoy icy treats and fruits',
+    '1.2-1.8 m',
+    'About 100 kg',
+    'Bamboo (99% of diet), occasionally small animals and fish',
+    'Up to 20 years in wild, 30+ in care',
+    'Vulnerable',
+    'Amazing Asian Animals I Waterfront',
+    'Waterfront',
+    'Giant pandas are one of the world''s most beloved animals! These black and white bears are excellent climbers and spend most of their day eating bamboo. Baby pandas are tiny - about the size of a stick of butter when they''re born!',
+    'Giant pandas can eat for 12-14 hours a day! They have a special enlarged wrist bone that works like a thumb to help them hold bamboo. Despite their large size, they can climb trees easily.',
+    'Habitat fragmentation; fewer than 1,900 left in wild',
+    'Support FSC-certified products to protect forests'
+);
+
+-- Southern Two-toed Sloth
+INSERT INTO animals (
+    animal_id, common_name, scientific_name, distribution_range, habitat,
+    classification, characteristics, body_length, weight, diet,
+    location_in_park, zone, description, fun_facts, threats, conservation_message
+) VALUES (
+    'sloth_001',
+    'Southern Two-toed Sloth',
+    'Choloepus didactylus',
+    'Tropical forests in Central America and northern South America, including Venezuela, Guyana, and Brazil',
+    'Tropical forests; high in the canopy, hanging from branches',
+    '{"phylum": "Chordata", "class": "Mammalia", "order": "Pilosa", "family": "Choloepodidae", "genus": "Choloepus"}',
+    'Slow metabolic rate allows survival on small amounts of vegetation; digestion takes nearly a month; nocturnal, sleep more than 15 hours per day; live upside-down',
+    '46-86 cm',
+    '4-8 kg',
+    'Leaves, fruits, small insects',
+    'Rainforest I Summit; Aqua City I Waterfront',
+    'Rainforest',
+    'Sloths are the slowest mammals on Earth! They spend almost their entire lives hanging upside down in trees. Their slow movement helps them save energy and stay hidden from predators.',
+    'Sloths only go to the bathroom once a week! They come down from their trees to poop on the ground. They move so slowly that algae grows on their fur, which actually helps camouflage them in the trees.',
+    'Logging and poaching',
+    'Reuse and recycle paper to protect habitats'
+);
+
+-- Arctic Fox
+INSERT INTO animals (
+    animal_id, common_name, scientific_name, distribution_range, habitat,
+    classification, characteristics, body_length, weight, diet,
+    location_in_park, zone, description, fun_facts, threats, conservation_message
+) VALUES (
+    'arctic_fox_001',
+    'Arctic Fox',
+    'Vulpes lagopus',
+    'Arctic tundra in countries such as Canada, Greenland, and Finland',
+    'Arctic tundra',
+    '{"phylum": "Chordata", "class": "Mammalia", "order": "Carnivora", "family": "Canidae", "genus": "Vulpes"}',
+    'Moult twice yearly (white in winter for camouflage, brown/grey in summer); opportunistic feeders; store excess food in dens for winter; grow quickly; solitary',
+    '46-68 cm',
+    '3-8 kg',
+    'Small mammals, birds, insects, berries',
+    'Polar Adventure I Summit; Arctic Fox Den',
+    'Ice Land',
+    'Arctic foxes are amazing survivors in one of Earth''s harshest environments! They have the warmest fur of any mammal, which helps them survive temperatures as cold as -70°C (-94°F). They change color with the seasons!',
+    'Arctic foxes have fur on the bottom of their paws to keep them warm and help them walk on ice! In winter, their fur turns white to blend in with snow. In summer, it turns brown or grey to match the tundra.',
+    'Fur hunting and fur farms',
+    'Avoid fur products'
+);
+
+-- Pacific Walrus
+INSERT INTO animals (
+    animal_id, common_name, scientific_name, distribution_range, habitat,
+    classification, characteristics, body_length, weight, diet,
+    lifespan, conservation_status,
+    location_in_park, zone, description, fun_facts, threats, conservation_message
+) VALUES (
+    'walrus_001',
+    'Pacific Walrus',
+    'Odobenus rosmarus divergens',
+    'Marginal seas of the North Pacific and Arctic Ocean',
+    'Arctic and subarctic regions; requires sea ice for breeding and feeding',
+    '{"phylum": "Chordata", "class": "Mammalia", "order": "Carnivora", "family": "Odobenidae", "genus": "Odobenus"}',
+    'Tusks (canines) up to 1 meter for breaking ice, hauling out, territory defense; thick blubber and vasoconstriction for heat conservation; few predators (killer whales, polar bears)',
+    '3.0-3.6 m',
+    'Male up to 1,700 kg, female up to 1,250 kg',
+    'Clams, mussels, marine invertebrates',
+    'About 30 years',
+    'Data Deficient',
+    'Polar Adventure I Summit',
+    'Ice Land',
+    'Walruses are huge marine mammals with iconic tusks! These tusks are actually super-long canine teeth that can grow up to 1 meter long. They use them to pull themselves out of the water and to break through ice.',
+    'Walruses can stay underwater for up to 30 minutes while searching for food! They use their whiskers to find clams on the dark ocean floor. A walrus can eat 3,000 to 6,000 clams in one feeding!',
+    'Historical hunting, climate change reducing sea ice, fisheries disturbance',
+    'Reduce carbon emissions by using public transport'
+);
+
+-- Gentoo Penguin
+INSERT INTO animals (
+    animal_id, common_name, scientific_name, distribution_range, habitat,
+    classification, characteristics, body_length, weight, diet,
+    location_in_park, zone, description, fun_facts, threats, conservation_message
+) VALUES (
+    'gentoo_penguin_001',
+    'Gentoo Penguin',
+    'Pygoscelis papua',
+    'Antarctic Peninsula and sub-Antarctic islands, including the Falkland Islands',
+    'Coastal and marine environments',
+    '{"phylum": "Chordata", "class": "Aves", "order": "Sphenisciformes", "family": "Spheniscidae", "genus": "Pygoscelis"}',
+    'Fastest swimmers among birds (up to 36 km/h); build nests with more than 1,700 pebbles, vegetation, feathers; males select sites to attract females; bow to accept pebbles',
+    '70-95 cm',
+    '4.5-8.5 kg',
+    'Fish, krill, squid',
+    'Polar Adventure I Summit',
+    'Ice Land',
+    'Gentoo penguins are the fastest swimming birds in the world! They can swim at speeds up to 36 km/h (22 mph). They have a distinctive white stripe across the top of their heads that makes them easy to identify.',
+    'Gentoo penguins build nests using pebbles, and they''re very picky about them! Males collect pebbles to give to females as gifts. If the female likes the pebble, she bows to accept it. Some sneaky penguins steal pebbles from other nests!',
+    'Climate change and human activities',
+    'Reduce carbon emissions by using public transport'
+);
+
+-- Harbour Seal
+INSERT INTO animals (
+    animal_id, common_name, scientific_name, distribution_range, habitat,
+    classification, characteristics, body_length, weight, diet,
+    conservation_status,
+    location_in_park, zone, description, fun_facts, threats, conservation_message
+) VALUES (
+    'harbour_seal_001',
+    'Harbour Seal',
+    'Phoca vitulina',
+    'Coastal waters in temperate and Arctic regions of the Northern Hemisphere',
+    'Coastal marine environments',
+    '{"phylum": "Chordata", "class": "Mammalia", "order": "Carnivora", "family": "Phocidae", "genus": "Phoca"}',
+    'Coat with unique dark spots and light rings; pups fed high-fat milk (50%); weaned at 4-6 weeks for rapid growth',
+    '1.6-1.9 m',
+    'Male 80-170 kg, female 60-145 kg',
+    'Fish, squid, crustaceans',
+    'Least Concern',
+    'Pacific Pier I Summit; Sea Lion and Seal Expedition',
+    'Summit',
+    'Harbor seals are adorable marine mammals with spotted coats! Each seal has a unique pattern of spots, like a fingerprint. They''re excellent swimmers and can dive up to 500 meters deep to catch fish.',
+    'Harbor seal pups can swim just a few hours after being born! Their mothers'' milk is super rich - it''s 50% fat (human milk is only 4% fat). Baby seals drink about 1.5 liters of milk per day to grow quickly.',
+    'By-catch, entanglement in fishing gear, reduced food from overfishing, hunting to protect fisheries',
+    'Support sustainable seafood choices'
+);
+
+-- Create a view for easy animal browsing by zone
+CREATE OR REPLACE VIEW animals_by_zone AS
+SELECT 
+    zone,
+    common_name,
+    scientific_name,
+    location_in_park,
+    conservation_status,
+    animal_id
+FROM animals
+ORDER BY zone, common_name;
+
+-- Create a view for conservation status summary
+CREATE OR REPLACE VIEW conservation_summary AS
+SELECT 
+    conservation_status,
+    COUNT(*) as animal_count,
+    array_agg(common_name) as animals
+FROM animals
+WHERE conservation_status IS NOT NULL
+GROUP BY conservation_status;

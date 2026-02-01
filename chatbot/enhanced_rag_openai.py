@@ -36,7 +36,8 @@ class EnhancedRAGWithOpenAI:
         self.artwork_patterns = {
             "cafe terrace at night": ["cafe terrace", "terrace at night", "van gogh cafe", "night cafe"],
             "the execution of lady jane grey": ["lady jane grey", "jane grey", "execution", "lady jane"],
-            "the progress of a soul: the victory": ["victory", "the victory", "progress of a soul", "traquair victory"]
+            "the progress of a soul: the victory": ["victory", "the victory", "progress of a soul", "traquair victory"],
+            "openfish":["openfish", "open fish", "robot fish", "robotic fish", "soft robot", "fish"]
         }
 
 
@@ -116,7 +117,6 @@ class EnhancedRAGWithOpenAI:
         
         return None
 
-    # MIGRATED FROM ACTIONS.PY: Enhanced database search with multiple strategies  
     def enhanced_artwork_search(self, message, artwork_entity=None):
         """Enhanced search with better matching for the collection"""
         
